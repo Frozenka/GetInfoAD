@@ -15,7 +15,7 @@ def check_env_vars():
 def banner():
     print()
     print(colored("╔════════════════════════════════════════════════════╗", "cyan"))
-    print(colored("║    🔍 GetInfoAD - Active Directory (NXC)           ║", "green", attrs=["bold"]))
+    print(colored("║    🔍 GetInfoAD - Active Directory (with NXC)           ║", "green", attrs=["bold"]))
     print(colored("╚════════════════════════════════════════════════════╝", "cyan"))
     print()
 
@@ -51,7 +51,7 @@ def get_users():
 def get_machines(with_versions=False):
     command = '''nxc smb $IP -u $USER -p $PASSWORD'''
     try:
-        print(colored("▶️  Retrieving machines...\n", "cyan"))
+        print(colored("▶️  Retrieving computeurs...\n", "cyan"))
         result = subprocess.run(command, shell=True, executable="/bin/bash", check=True, capture_output=True, text=True)
         lines = result.stdout.strip().splitlines()
         hosts = {}
@@ -116,7 +116,7 @@ def full_report():
         md.append(f"- {host}")
     md.append("")
 
-    md.append(f"## OS per Machine\n")
+    md.append(f"## OS\n")
     for host, osinfo in machines_os.items():
         md.append(f"- {host} — {osinfo}")
     md.append("")
