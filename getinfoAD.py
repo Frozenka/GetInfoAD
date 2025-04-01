@@ -104,24 +104,35 @@ def full_report():
     machines_os = get_machines(with_versions=True)
 
     md = []
-    md.append(f"## Domain Users - {domain}\n")
+    md.append(f"# Active Directory Report - {domain}\n")
+
+    md.append(f"## Domain Users\n")
     for user in users:
         md.append(f"- {user}")
     md.append("")
 
-    md.append(f"## Domain Machines - {domain}\n")
+    md.append(f"## Domain Machines\n")
     for host in machines.keys():
         md.append(f"- {host}")
     md.append("")
 
-    md.append(f"## OS - {domain}\n")
+    md.append(f"## OS per Machine\n")
     for host, osinfo in machines_os.items():
         md.append(f"- {host} — {osinfo}")
     md.append("")
 
     markdown_output = "\n".join(md)
-    print(markdown_output)
-    ask_to_save(markdown_output.splitlines(), "report.md")
+    filename = "report.md"
+
+    try:
+        with open(filename, "w") as f:
+            f.write(markdown_output + "\n")
+        print(colored(f"✅ Report saved to: {filename}", "green", attrs=["bold"]))
+        print(colored(f"✨ Opening report...\n", "magenta"))
+        os.system(f"glow {filename}")
+    except Exception as e:
+        print(colored("❌ Error while saving or opening the report:", "red"), e)
+
 
 def main():
     parser = argparse.ArgumentParser(description="Active Directory enumeration via SMB")
