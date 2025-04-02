@@ -4,8 +4,19 @@ import subprocess
 import sys
 import argparse
 import re
+import shutil
 from termcolor import colored
 from collections import defaultdict
+
+def install_glow_if_missing():
+    if not shutil.which("glow"):
+        print(colored("✨ 'glow' is not installed. Installing via snap...", "yellow"))
+        try:
+            subprocess.run("snap install glow", shell=True, check=True)
+            print(colored("✅ 'glow' successfully installed.", "green"))
+        except subprocess.CalledProcessError:
+            print(colored("❌ Failed to install 'glow'. Please install it manually.", "red"))
+            sys.exit(1)
 
 def check_env_vars():
     env = {}
@@ -232,6 +243,7 @@ def main():
     if not any(vars(args).values()):
         args.full = True
 
+    install_glow_if_missing()
     banner()
     env = check_env_vars()
     show_env(env)
