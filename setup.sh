@@ -28,9 +28,6 @@ install_if_missing() {
         dpkg -i /tmp/glow.deb || apt -f install -y
         rm /tmp/glow.deb
         ;;
-      nxc)
-        pip3 install nxc
-        ;;
       *)
         apt install -y $1
         ;;
@@ -40,8 +37,8 @@ install_if_missing() {
   fi
 }
 
-# Dependencies
-REQUIRED_CMDS=(nxc glow awk bash python3 pip3 git)
+# Dependencies (nxc removed from list)
+REQUIRED_CMDS=(glow awk bash python3 pip3 git)
 for cmd in "${REQUIRED_CMDS[@]}"; do
   install_if_missing "$cmd"
   sleep 0.5
