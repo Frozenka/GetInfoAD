@@ -5,7 +5,7 @@ set -e
 REPO_URL="https://github.com/Frozenka/GetInfoAD.git"
 INSTALL_DIR="/opt/getinfoad"
 ALIAS_NAME="getinfoAD"
-ALIAS_COMMAND="python3 $INSTALL_DIR/getinfoAD.py -f"
+ALIAS_COMMAND="python3 $INSTALL_DIR/getinfoAD.py "
 SHELL_CONFIG="$HOME/.bashrc"
 
 # Check if run as root
