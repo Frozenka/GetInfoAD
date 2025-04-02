@@ -32,8 +32,7 @@ Other options:
 ```
 
 ## Requirements
-- Python 3.x
-- NXC
+- Exegol
 
 ## Installation
 ### Quick Install (Recommended)
