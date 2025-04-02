@@ -40,7 +40,7 @@ def run_command(command):
         return []
 
 def ask_to_save(data, default_name):
-    choice = input(colored("\n💾 Do you want to save this list to a file? (y/n) > ", "yellow")).strip().lower()
+    choice = input(colored("\n📂 Do you want to save this list to a file? (y/n) > ", "yellow")).strip().lower()
     if choice == "y":
         filename = input(colored(f"📝 Enter filename (default: {default_name}) > ", "cyan")).strip()
         filename = filename if filename else default_name
@@ -51,7 +51,7 @@ def ask_to_save(data, default_name):
         except Exception as e:
             print(colored("❌ Error while saving:", "red"), e)
     else:
-        print(colored("📭 List not saved.", "yellow"))
+        print(colored("📬 List not saved.", "yellow"))
 
 def get_users():
     command = '''nxc smb $IP -u $USER -p $PASSWORD --users | awk '/^SMB/ && $5 !~ /^([-]|DefaultAccount|WDAGUtilityAccount|Guest|krbtgt|-Username-|\[\*\]|\[\+\])$/ { print $5 }' '''
@@ -173,18 +173,18 @@ def full_report():
         md.append("")
 
     if machines:
-        md.append("## 🖥️ Domain Machines\n")
+        md.append("## 💻 Domain Machines\n")
         md.extend(machines.keys())
         md.append("")
 
     if machines_os:
-        md.append("## 💽 Operating Systems\n")
+        md.append("## 📍 Operating Systems\n")
         for host, osinfo in machines_os.items():
             md.append(f"{host}  — {osinfo}")
         md.append("")
 
     if loggedon:
-        md.append("## 👨💻 Logged-on Users")
+        md.append("## 👨‍💻 Logged-on Users")
         for host, info in loggedon.items():
             md.append(f"### Logged-on {host} ({info['ip']})")
             if info["users"]:
@@ -216,15 +216,21 @@ def full_report():
     except Exception as e:
         print(colored("❌ Error while saving or opening the report:", "red"), e)
 
+    ask_to_save(markdown_output.splitlines(), filename)
+
 def main():
     parser = argparse.ArgumentParser(description="Active Directory enumeration via SMB")
-    group = parser.add_mutually_exclusive_group(required=True)
+    group = parser.add_mutually_exclusive_group()
     group.add_argument("-u", "--users", action="store_true", help="List domain users")
     group.add_argument("-m", "--machines", action="store_true", help="List exposed machine names")
     group.add_argument("-o", "--os", action="store_true", help="List machines with their operating system")
     group.add_argument("-f", "--full", action="store_true", help="Show all info in Markdown format")
     group.add_argument("--groups", action="store_true", help="List domain groups")
     args = parser.parse_args()
+
+    # Default to --full if no args provided
+    if not any(vars(args).values()):
+        args.full = True
 
     banner()
     env = check_env_vars()
