@@ -18,21 +18,6 @@ fi
 # Update APT repo
 apt update -y
 
-# Dependencies à installer via APT
-APT_PKGS=(awk bash python3 python3-pip git)
-MISSING_APT_PKGS=()
-
-for pkg in "${APT_PKGS[@]}"; do
-  if ! command -v "${pkg%%-*}" &>/dev/null; then
-    MISSING_APT_PKGS+=("$pkg")
-  fi
-done
-
-if [ ${#MISSING_APT_PKGS[@]} -ne 0 ]; then
-  echo "➕ Installing APT dependencies: ${MISSING_APT_PKGS[*]}"
-  apt install -y "${MISSING_APT_PKGS[@]}"
-fi
-
 # Ensure pip3 is available even if not in PATH
 if ! command -v pip3 &>/dev/null; then
   if [ -f /usr/bin/pip3 ]; then
@@ -40,7 +25,7 @@ if ! command -v pip3 &>/dev/null; then
   elif [ -f /bin/pip3 ]; then
     ln -sf /bin/pip3 /usr/local/bin/pip3
   else
-    echo "❌ pip3 not found even after installing python3-pip."
+    echo "❌ pip3 not found. Please install python3-pip manually."
     exit 1
   fi
 fi
