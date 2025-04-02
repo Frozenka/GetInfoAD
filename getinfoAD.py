@@ -5,8 +5,16 @@ import sys
 import argparse
 import re
 import shutil
-from termcolor import colored
+import site
 from collections import defaultdict
+
+def install_termcolor_if_missing():
+    try:
+        import termcolor
+    except ImportError:
+        print("[termcolor]: Module manquant. Installation en cours...")
+        subprocess.run([sys.executable, "-m", "pip", "install", "termcolor"], check=True)
+        site.main()  # recharge les chemins
 
 def install_glow_if_missing():
     install_dir = "/opt/tools/glow"
@@ -17,15 +25,15 @@ def install_glow_if_missing():
         return
 
     if os.path.exists(binary_path):
-        print(colored("[Glow]: Binaire trouvé localement, création du lien symbolique...", "cyan"))
+        print("[Glow]: Binaire trouvé localement, création du lien symbolique...")
         try:
             subprocess.run(["ln", "-sf", binary_path, symlink_path], check=True)
-            print(colored("[Glow]: Glow est maintenant disponible dans le PATH.", "green"))
+            print("[Glow]: Glow est maintenant disponible dans le PATH.")
         except Exception as e:
-            print(colored("[Glow]: Erreur lors de la création du lien symbolique :", "red"), e)
+            print("[Glow]: Erreur lors de la création du lien symbolique :", e)
         return
 
-    print(colored("[Glow]: Glow n'est pas installé. Téléchargement et installation...", "yellow"))
+    print("[Glow]: Glow n'est pas installé. Téléchargement et installation...")
 
     try:
         subprocess.run(["git", "clone", "https://github.com/charmbracelet/glow.git", install_dir], check=True)
@@ -33,17 +41,20 @@ def install_glow_if_missing():
 
         if os.path.exists(binary_path):
             subprocess.run(["ln", "-sf", binary_path, symlink_path], check=True)
-            print(colored("[Glow]: Installation réussie !", "green"))
+            print("[Glow]: Installation réussie !")
         else:
-            print(colored("[Glow]: Compilation terminée mais binaire introuvable.", "red"))
+            print("[Glow]: Compilation terminée mais binaire introuvable.")
             sys.exit(1)
 
     except subprocess.CalledProcessError as e:
-        print(colored(f"[Glow]: Erreur lors de l'installation : {e}", "red"))
+        print(f"[Glow]: Erreur lors de l'installation : {e}")
         sys.exit(1)
     except Exception as e:
-        print(colored(f"[Glow]: Une erreur inattendue s'est produite : {e}", "red"))
+        print(f"[Glow]: Une erreur inattendue s'est produite : {e}")
         sys.exit(1)
+
+install_termcolor_if_missing()
+from termcolor import colored
 
 def check_env_vars():
     env = {}
@@ -92,7 +103,7 @@ def ask_to_save(data, default_name):
         print(colored("📬 List not saved.", "yellow"))
 
 def get_users():
-    command = '''nxc smb $IP -u $USER -p $PASSWORD --users | awk '/^SMB/ && $5 !~ /^([-]|DefaultAccount|WDAGUtilityAccount|Guest|krbtgt|-Username-|\[\*\]|\[\+\])$/ { print $5 }' '''
+    command = r'''nxc smb $IP -u $USER -p $PASSWORD --users | awk '/^SMB/ && $5 !~ /^([-]|DefaultAccount|WDAGUtilityAccount|Guest|krbtgt|-Username-|\[\*\]|\[\+\])$/ { print $5 }' '''
     print(colored("▶️  Retrieving domain users...", "cyan"))
     return sorted(set(run_command(command)))
 
