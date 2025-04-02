@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -xe
+set -e
 
 REPO_URL="https://github.com/Frozenka/GetInfoAD.git"
 INSTALL_DIR="/opt/getinfoad"
@@ -14,41 +14,21 @@ if [ "$EUID" -ne 0 ]; then
   exit 1
 fi
 
-apt update -y
-
-# Function to install a package if not present
-install_if_missing() {
-  if ! command -v $1 &>/dev/null; then
-    echo "➕ Installing $1..."
-    case $1 in
-      glow)
-        ARCH=$(dpkg --print-architecture)
-        VERSION="1.5.1"
-        DEB="/tmp/glow_${VERSION}_linux_${ARCH}.deb"
-        wget -q "https://github.com/charmbracelet/glow/releases/download/v${VERSION}/glow_${VERSION}_linux_${ARCH}.deb" -O "$DEB"
-        if dpkg -i "$DEB"; then
-          echo "✅ glow installed successfully."
-        else
-          echo "⚠️ dpkg failed, trying apt to fix..."
-          apt install -f -y && dpkg -i "$DEB"
-        fi
-        rm -f "$DEB"
-        ;;
-      *)
-        apt install -y $1
-        ;;
-    esac
-  else
-    echo "✅ $1 already installed."
-  fi
-}
-
-# Dependencies (nxc removed from list)
+# Check and install dependencies
 REQUIRED_CMDS=(glow awk bash python3 pip3 git)
+MISSING_DEPS=()
+
 for cmd in "${REQUIRED_CMDS[@]}"; do
-  install_if_missing "$cmd"
-  sleep 0.5
+  if ! command -v $cmd &>/dev/null; then
+    MISSING_DEPS+=("$cmd")
+  fi
 done
+
+if [ ${#MISSING_DEPS[@]} -ne 0 ]; then
+  echo "➕ Installing missing dependencies: ${MISSING_DEPS[*]}"
+  apt update -y
+  apt install -y "${MISSING_DEPS[@]}"
+fi
 
 # Clone repo
 if [ -d "$INSTALL_DIR" ]; then
