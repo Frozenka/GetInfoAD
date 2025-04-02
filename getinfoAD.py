@@ -9,14 +9,41 @@ from termcolor import colored
 from collections import defaultdict
 
 def install_glow_if_missing():
-    if not shutil.which("glow"):
-        print(colored("✨ 'glow' is not installed. Installing via snap...", "yellow"))
+    install_dir = "/opt/tools/glow"
+    binary_path = os.path.join(install_dir, "glow")
+    symlink_path = "/usr/local/bin/glow"
+
+    if shutil.which("glow"):
+        return
+
+    if os.path.exists(binary_path):
+        print(colored("[Glow]: Binaire trouvé localement, création du lien symbolique...", "cyan"))
         try:
-            subprocess.run("snap install glow", shell=True, check=True)
-            print(colored("✅ 'glow' successfully installed.", "green"))
-        except subprocess.CalledProcessError:
-            print(colored("❌ Failed to install 'glow'. Please install it manually.", "red"))
+            subprocess.run(["ln", "-sf", binary_path, symlink_path], check=True)
+            print(colored("[Glow]: Glow est maintenant disponible dans le PATH.", "green"))
+        except Exception as e:
+            print(colored("[Glow]: Erreur lors de la création du lien symbolique :", "red"), e)
+        return
+
+    print(colored("[Glow]: Glow n'est pas installé. Téléchargement et installation...", "yellow"))
+
+    try:
+        subprocess.run(["git", "clone", "https://github.com/charmbracelet/glow.git", install_dir], check=True)
+        subprocess.run(["go", "build"], cwd=install_dir, check=True)
+
+        if os.path.exists(binary_path):
+            subprocess.run(["ln", "-sf", binary_path, symlink_path], check=True)
+            print(colored("[Glow]: Installation réussie !", "green"))
+        else:
+            print(colored("[Glow]: Compilation terminée mais binaire introuvable.", "red"))
             sys.exit(1)
+
+    except subprocess.CalledProcessError as e:
+        print(colored(f"[Glow]: Erreur lors de l'installation : {e}", "red"))
+        sys.exit(1)
+    except Exception as e:
+        print(colored(f"[Glow]: Une erreur inattendue s'est produite : {e}", "red"))
+        sys.exit(1)
 
 def check_env_vars():
     env = {}
@@ -239,7 +266,6 @@ def main():
     group.add_argument("--groups", action="store_true", help="List domain groups")
     args = parser.parse_args()
 
-    # Default to --full if no args provided
     if not any(vars(args).values()):
         args.full = True
 
