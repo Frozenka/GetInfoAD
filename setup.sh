@@ -5,7 +5,8 @@ set -e
 REPO_URL="https://github.com/Frozenka/GetInfoAD.git"
 INSTALL_DIR="/opt/getinfoad"
 ALIAS_NAME="getinfoAD"
-SHELL_CONFIG="/home/$SUDO_USER/.bashrc"
+REAL_USER=$(logname)
+SHELL_CONFIG="/home/$REAL_USER/.bashrc"
 ALIAS_COMMAND="python3 $INSTALL_DIR/getinfoAD.py "
 
 # Check if run as root
@@ -14,40 +15,36 @@ if [ "$EUID" -ne 0 ]; then
   exit 1
 fi
 
-# Update apt repo
+# Update APT repo
 apt update -y
 
-# Replace pip3 with correct package name
-REQUIRED_PKGS=(glow awk bash python3 python3-pip git)
-MISSING_PKGS=()
+# Dependencies à installer via APT
+APT_PKGS=(awk bash python3 python3-pip git)
+MISSING_APT_PKGS=()
 
-# Check for missing packages
-for pkg in "${REQUIRED_PKGS[@]}"; do
+for pkg in "${APT_PKGS[@]}"; do
   if ! command -v "${pkg%%-*}" &>/dev/null; then
-    MISSING_PKGS+=("$pkg")
+    MISSING_APT_PKGS+=("$pkg")
   fi
 done
 
-# Install missing apt packages
-if [ ${#MISSING_PKGS[@]} -ne 0 ]; then
-  echo "➕ Installing missing dependencies: ${MISSING_PKGS[*]}"
-  for pkg in "${MISSING_PKGS[@]}"; do
-    if [ "$pkg" = "glow" ]; then
-      echo "✨ Installing glow via snap (not found in apt)..."
-      snap install glow
-    else
-      apt install -y "$pkg"
-    fi
-  done
+if [ ${#MISSING_APT_PKGS[@]} -ne 0 ]; then
+  echo "➕ Installing APT dependencies: ${MISSING_APT_PKGS[*]}"
+  apt install -y "${MISSING_APT_PKGS[@]}"
 fi
 
-# Ensure pip3 is available
-if ! command -v pip3 &>/dev/null; then
-  echo "🔗 Forcing symlink for pip3..."
+# pip3 symlink if needed
+if ! command -v pip3 &>/dev/null && [ -f /usr/bin/pip3 ]; then
   ln -s /usr/bin/pip3 /usr/local/bin/pip3 || true
 fi
 
-# Clone repo
+# glow via snap
+if ! command -v glow &>/dev/null; then
+  echo "✨ Installing glow via snap..."
+  snap install glow
+fi
+
+# Clone GetInfoAD
 if [ -d "$INSTALL_DIR" ]; then
   echo "📂 Directory already exists: $INSTALL_DIR"
 else
@@ -55,10 +52,10 @@ else
   git clone "$REPO_URL" "$INSTALL_DIR"
 fi
 
-# Make script executable
+# Make main script executable
 chmod +x "$INSTALL_DIR/getinfoAD.py"
 
-# Set alias if not already present
+# Set alias in the user's .bashrc
 if ! grep -q "$ALIAS_COMMAND" "$SHELL_CONFIG"; then
   echo "🔧 Adding alias to $SHELL_CONFIG"
   echo "alias $ALIAS_NAME='$ALIAS_COMMAND'" >> "$SHELL_CONFIG"
