@@ -63,7 +63,6 @@ Example with Exegol:
 ```bash
 exegol-history add creds -u 'user' -p 'password'
 exegol-history apply creds
-export IP=10.129.205.0/24
 getinfoAD
 ```
 
