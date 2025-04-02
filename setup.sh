@@ -14,7 +14,6 @@ if [ "$EUID" -ne 0 ]; then
   exit 1
 fi
 
-# Update package list
 apt update -y
 
 # Function to install a package if not present
