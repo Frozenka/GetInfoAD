@@ -14,18 +14,39 @@ if [ "$EUID" -ne 0 ]; then
   exit 1
 fi
 
-# Check dependencies
-REQUIRED_CMDS=(nxc glow awk bash)
-for cmd in "${REQUIRED_CMDS[@]}"; do
-  if ! command -v $cmd &> /dev/null; then
-    echo "❌ Missing dependency: $cmd"
-    MISSING=true
+# Update package list
+apt update -y
+
+# Function to install a package if not present
+install_if_missing() {
+  if ! command -v $1 &>/dev/null; then
+    echo "➕ Installing $1..."
+    case $1 in
+      glow)
+        ARCH=$(dpkg --print-architecture)
+        VERSION="1.5.1"
+        wget -q "https://github.com/charmbracelet/glow/releases/download/v${VERSION}/glow_${VERSION}_linux_${ARCH}.deb" -O /tmp/glow.deb
+        dpkg -i /tmp/glow.deb || apt -f install -y
+        rm /tmp/glow.deb
+        ;;
+      nxc)
+        pip3 install nxc
+        ;;
+      *)
+        apt install -y $1
+        ;;
+    esac
+  else
+    echo "✅ $1 already installed."
   fi
+}
+
+# Dependencies
+REQUIRED_CMDS=(nxc glow awk bash python3 pip3 git)
+for cmd in "${REQUIRED_CMDS[@]}"; do
+  install_if_missing "$cmd"
+  sleep 0.5
 done
-if [ "$MISSING" = true ]; then
-  echo "⚠️ Please install missing dependencies and re-run the setup."
-  exit 1
-fi
 
 # Clone repo
 if [ -d "$INSTALL_DIR" ]; then
