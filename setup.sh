@@ -14,6 +14,19 @@ if [ "$EUID" -ne 0 ]; then
   exit 1
 fi
 
+# Check dependencies
+REQUIRED_CMDS=(nxc glow awk bash)
+for cmd in "${REQUIRED_CMDS[@]}"; do
+  if ! command -v $cmd &> /dev/null; then
+    echo "❌ Missing dependency: $cmd"
+    MISSING=true
+  fi
+done
+if [ "$MISSING" = true ]; then
+  echo "⚠️ Please install missing dependencies and re-run the setup."
+  exit 1
+fi
+
 # Clone repo
 if [ -d "$INSTALL_DIR" ]; then
   echo "📂 Directory already exists: $INSTALL_DIR"
