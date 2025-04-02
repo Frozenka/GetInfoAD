@@ -1,21 +1,22 @@
 # GetInfoAD
-
 **GetInfoAD** is a fast and flexible Active Directory enumeration tool built around [NXC](https://github.com/microfrosty/nxc). It was designed primarily for use with [Exegol](https://github.com/ShutdownRepo/Exegol) and integrates seamlessly with its credential and environment variable management.
 
-![Enregistrement 2025-04-02 104050-VEED](https://github.com/user-attachments/assets/116892ab-a658-448a-ae9f-b3df71b6cbbe)
+![image](https://github.com/user-attachments/assets/502c9873-c7ae-47be-8430-5a5af9dfc3c9)
 
 ## Features
-
 - List domain users
 - Enumerate domain machines and their operating systems
 - Retrieve LDAP domain groups
 - Detect currently logged-on users on each host
 - Get network interface information per machine
 - Dump password policy
-- Generates a clear Markdown report (`report.md`)
+- Generates a clear Markdown report (report.md)
+- Perform AS-REP Roasting to extract hashes
+- Crack AS-REP hashes 
+
+![Enregistrement 2025-04-02 104050-VEED](https://github.com/user-attachments/assets/116892ab-a658-448a-ae9f-b3df71b6cbbe)
 
 ## Usage
-
 Run the tool with full report mode:
 ```bash
 getinfoAD
@@ -30,7 +31,6 @@ Other options:
 ```
 
 ## Requirements
-
 - Python 3.x
 - NXC
 
