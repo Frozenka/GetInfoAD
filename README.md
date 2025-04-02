@@ -15,7 +15,7 @@
 ## Requirements
 
 - Python 3.x
-- `nxc` binary available in `$PATH`
+- NXC
 
 ## Installation
 ### Quick Install (Recommended)
