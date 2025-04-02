@@ -24,10 +24,11 @@ getinfoAD
 
 Other options:
 ```bash
- getinfoAD.py -u         # List users
- getinfoAD.py -m         # List machines
- getinfoAD.py -o         # List machines with OS
- getinfoAD.py --groups   # List LDAP groups
+ getinfoAD -u         # List users
+ getinfoAD -m         # List machines
+ getinfoAD -o         # List machines with OS
+ getinfoAD --groups   # List LDAP groups
+ getinfoAD -a         # Asreproasting + crack
 ```
 
 ## Requirements
