@@ -2,6 +2,8 @@
 
 **GetInfoAD** is a fast and flexible Active Directory enumeration tool built around [NXC](https://github.com/microfrosty/nxc). It was designed primarily for use with [Exegol](https://github.com/ShutdownRepo/Exegol) and integrates seamlessly with its credential and environment variable management.
 
+![Enregistrement 2025-04-02 104050-VEED](https://github.com/user-attachments/assets/116892ab-a658-448a-ae9f-b3df71b6cbbe)
+
 ## Features
 
 - List domain users
@@ -11,6 +13,21 @@
 - Get network interface information per machine
 - Dump password policy
 - Generates a clear Markdown report (`report.md`)
+
+## Usage
+
+Run the tool with full report mode:
+```bash
+getinfoAD
+```
+
+Other options:
+```bash
+ getinfoAD.py -u         # List users
+ getinfoAD.py -m         # List machines
+ getinfoAD.py -o         # List machines with OS
+ getinfoAD.py --groups   # List LDAP groups
+```
 
 ## Requirements
 
@@ -42,21 +59,6 @@ git clone https://github.com/Frozenka/GetInfoAD.git /opt/getinfoad
 chmod +x /opt/getinfoad/getinfoAD.py
 echo "alias getinfoAD='python3 /opt/getinfoad/getinfoAD.py -f'" >> ~/.bashrc
 source ~/.bashrc
-```
-
-## Usage
-
-Run the tool with full report mode:
-```bash
-getinfoAD
-```
-
-Other options:
-```bash
- getinfoAD.py -u         # List users
- getinfoAD.py -m         # List machines
- getinfoAD.py -o         # List machines with OS
- getinfoAD.py --groups   # List LDAP groups
 ```
 
 Example with Exegol:
