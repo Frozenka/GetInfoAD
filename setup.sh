@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -e
+set -xe
 
 REPO_URL="https://github.com/Frozenka/GetInfoAD.git"
 INSTALL_DIR="/opt/getinfoad"
@@ -24,9 +24,15 @@ install_if_missing() {
       glow)
         ARCH=$(dpkg --print-architecture)
         VERSION="1.5.1"
-        wget -q "https://github.com/charmbracelet/glow/releases/download/v${VERSION}/glow_${VERSION}_linux_${ARCH}.deb" -O /tmp/glow.deb
-        dpkg -i /tmp/glow.deb || apt -f install -y
-        rm /tmp/glow.deb
+        DEB="/tmp/glow_${VERSION}_linux_${ARCH}.deb"
+        wget -q "https://github.com/charmbracelet/glow/releases/download/v${VERSION}/glow_${VERSION}_linux_${ARCH}.deb" -O "$DEB"
+        if dpkg -i "$DEB"; then
+          echo "✅ glow installed successfully."
+        else
+          echo "⚠️ dpkg failed, trying apt to fix..."
+          apt install -f -y && dpkg -i "$DEB"
+        fi
+        rm -f "$DEB"
         ;;
       *)
         apt install -y $1
