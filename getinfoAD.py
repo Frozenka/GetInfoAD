@@ -842,6 +842,10 @@ def ask_crack_hashes():
             print(colored("\n🎉 Cracked credentials (username:password):", "green", attrs=["bold"]))
             for cred in cracked:
                 print(colored(cred, "cyan"))
+            
+            with open("cracked_credentials.txt", "a") as f:
+                for cred in cracked:
+                    f.write(f"{cred}\n")
         else:
             print(colored("❌ No hashes cracked.", "red"))
 
