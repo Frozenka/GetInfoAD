@@ -9,6 +9,7 @@ from collections import defaultdict
 import requests
 import hashlib
 from pathlib import Path
+from datetime import datetime
 
 DEBUG = False
 
@@ -328,10 +329,10 @@ def show_banner():
     title = "Active Directory Enumeration"  
     print(colored("║", "cyan") + colored(f"{title:^62}", "blue", attrs=["bold"]) + colored("║", "cyan"))
     print(colored("╠══════════════════════════════════════════════════════════════╣", "cyan"))
-    powered_by = "  [*] Powered by Exegol"
-    print(colored("║", "cyan") + colored("  [*] ", "yellow") + colored("Powered by", "white") + colored(" Exegol", "green", attrs=["bold"]) + " " * (62 - len(powered_by)) + colored("║", "cyan"))
     created_by = "  [*] Created by frozenk"
     print(colored("║", "cyan") + colored("  [*] ", "yellow") + colored("Created by", "white") + colored(" frozenk", "blue", attrs=["bold"]) + " " * (62 - len(created_by)) + colored("║", "cyan"))
+    powered_by = "  [*] Powered by Exegol"
+    print(colored("║", "cyan") + colored("  [*] ", "yellow") + colored("Powered by", "white") + colored(" Exegol", "green", attrs=["bold"]) + " " * (62 - len(powered_by)) + colored("║", "cyan"))
     print(colored("╚══════════════════════════════════════════════════════════════╝", "cyan"))
     print()
 
@@ -386,12 +387,29 @@ def run_command(command, use_network=False, use_dc=False):
     try:
         is_network = os.getenv("IS_NETWORK", "False").lower() == "true"
         
+        def log_command(cmd, output, error=None):
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            with open("log.txt", "a") as f:
+                f.write(f"\n{'='*80}\n")
+                f.write(f"[{timestamp}] Command: {cmd}\n")
+                f.write(f"{'='*80}\n")
+                if output:
+                    f.write("Output:\n")
+                    f.write(output)
+                    f.write("\n")
+                if error:
+                    f.write("Error:\n")
+                    f.write(error)
+                    f.write("\n")
+                f.write(f"{'='*80}\n")
+        
         if use_dc and os.getenv("DC_IP"):
             dc_ip = os.getenv("DC_IP")
             current_command = command.replace("$IP", dc_ip)
             if DEBUG:
                 print(colored(f"🔍 Command (DC): {current_command}", "yellow"))
             result = subprocess.run(current_command, shell=True, executable="/bin/bash", check=True, capture_output=True, text=True)
+            log_command(current_command, result.stdout, result.stderr)
             if DEBUG:
                 print(colored("📤 Output:", "yellow"))
                 print(result.stdout)
@@ -410,6 +428,7 @@ def run_command(command, use_network=False, use_dc=False):
                 if DEBUG:
                     print(colored(f"🔍 Command: {current_command}", "yellow"))
                 result = subprocess.run(current_command, shell=True, executable="/bin/bash", check=True, capture_output=True, text=True)
+                log_command(current_command, result.stdout, result.stderr)
                 if DEBUG:
                     print(colored("📤 Output:", "yellow"))
                     print(result.stdout)
@@ -423,6 +442,7 @@ def run_command(command, use_network=False, use_dc=False):
             if DEBUG:
                 print(colored(f"🔍 Command: {command}", "yellow"))
             result = subprocess.run(command, shell=True, executable="/bin/bash", check=True, capture_output=True, text=True)
+            log_command(command, result.stdout, result.stderr)
             if DEBUG:
                 print(colored("📤 Output:", "yellow"))
                 print(result.stdout)
@@ -432,8 +452,9 @@ def run_command(command, use_network=False, use_dc=False):
             return result.stdout.strip().splitlines()
     
     except subprocess.CalledProcessError as e:
-        print(colored(f"❌ Command failed: {command}", "red"))
-        print(colored(e.stderr.strip(), "red"))
+        error_msg = f"❌ Command failed: {command}\n{e.stderr.strip()}"
+        print(colored(error_msg, "red"))
+        log_command(command, None, error_msg)
         return []
 
 def ask_to_save(data, default_name):
@@ -708,49 +729,64 @@ def ask_crack_kerberos_hashes():
     print(colored(f"🚀 Launching hashcat on {hashfile} using {wordlist}...", "magenta"))
     potfile = "hashcat.potfile"
 
-    command = f"hashcat -m 13100 {os.path.abspath(hashfile)} {os.path.abspath(wordlist)} --quiet --force --potfile-path {os.path.abspath(potfile)}"
+    command = f"hashcat {os.path.abspath(hashfile)} {os.path.abspath(wordlist)} --quiet --force --potfile-path {os.path.abspath(potfile)}"
 
     try:
-        subprocess.run(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True, text=True)
+        result = subprocess.run(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
 
-        cracked = []
-        with open(potfile, 'r') as f:
-            for line in f:
-                if line.strip():
-                    parts = line.strip().split(":")
-                    if len(parts) >= 3:
-                        match = re.search(r'\$krb5tgs\$23\$(?P<user>[^@]+)@', parts[0])
-                        if match:
-                            user = match.group("user")
-                            password = parts[-1]
-                            cracked.append(f"{user}:{password}")
+        if os.path.exists(potfile) and os.path.getsize(potfile) > 0:
+            cracked = []
+            with open(potfile, 'r') as f:
+                for line in f:
+                    if line.strip():
+                        parts = line.strip().split(":")
+                        if len(parts) >= 2:
+                            match = re.search(r'\$krb5tgs\$23\$\*([^\$]+)\$', parts[0])
+                            if match:
+                                user = match.group(1)
+                                password = parts[-1]
+                                cracked.append(f"{user}:{password}")
 
-        if cracked:
-            print(colored("\n🎉 Cracked credentials (username:password):", "green", attrs=["bold"]))
-            for cred in cracked:
-                print(colored(cred, "cyan"))
+            if cracked:
+                print(colored("\n🎉 Cracked credentials (username:password):", "green", attrs=["bold"]))
+                for cred in cracked:
+                    print(colored(cred, "cyan"))
+                
+                with open("cracked_credentials.txt", "a") as f:
+                    for cred in cracked:
+                        f.write(f"{cred}\n")
+            else:
+                print(colored("❌ No hashes cracked.", "red"))
         else:
             print(colored("❌ No hashes cracked.", "red"))
     
-    except subprocess.CalledProcessError:
+    except subprocess.CalledProcessError as e:
         print(colored("🚀 Hashcat completed with errors, displaying cracked hashes...", "yellow"))
+        print(colored(f"Error: {e.stderr}", "red"))
 
-        cracked = []
-        with open(potfile, 'r') as f:
-            for line in f:
-                if line.strip():
-                    parts = line.strip().split(":")
-                    if len(parts) >= 3:
-                        match = re.search(r'\$krb5tgs\$23\$(?P<user>[^@]+)@', parts[0])
-                        if match:
-                            user = match.group("user")
-                            password = parts[-1]
-                            cracked.append(f"{user}:{password}")
+        if os.path.exists(potfile) and os.path.getsize(potfile) > 0:
+            cracked = []
+            with open(potfile, 'r') as f:
+                for line in f:
+                    if line.strip():
+                        parts = line.strip().split(":")
+                        if len(parts) >= 2:
+                            match = re.search(r'\$krb5tgs\$23\$\*([^\$]+)\$', parts[0])
+                            if match:
+                                user = match.group(1)
+                                password = parts[-1]
+                                cracked.append(f"{user}:{password}")
 
-        if cracked:
-            print(colored("\n🎉 Cracked credentials (username:password):", "green", attrs=["bold"]))
-            for cred in cracked:
-                print(colored(cred, "cyan"))
+            if cracked:
+                print(colored("\n🎉 Cracked credentials (username:password):", "green", attrs=["bold"]))
+                for cred in cracked:
+                    print(colored(cred, "cyan"))
+                
+                with open("cracked_credentials.txt", "a") as f:
+                    for cred in cracked:
+                        f.write(f"{cred}\n")
+            else:
+                print(colored("❌ No hashes cracked.", "red"))
         else:
             print(colored("❌ No hashes cracked.", "red"))
 
@@ -1282,21 +1318,15 @@ def full_report():
 
     md.append("## 🔑 Cracked Credentials\n")
     
-    potfile = "hashcat.potfile"
-    if os.path.exists(potfile):
+    if os.path.exists("cracked_credentials.txt"):
         md.append("### Cracked Passwords\n```")
-        with open(potfile, 'r') as f:
+        with open("cracked_credentials.txt", 'r') as f:
             for line in f:
                 if line.strip():
-                    if "$krb5asrep$" in line or "$krb5tgs$" in line:
-                        parts = line.strip().split(":")
-                        if len(parts) >= 3:
-                            match = re.search(r'\$(krb5asrep|krb5tgs)\$23\$(?P<user>[^@]+)@', parts[0])
-                            if match:
-                                user = match.group("user")
-                                password = parts[-1]
-                                md.append(f"{user}:{password}")
+                    md.append(line.strip())
         md.append("```\n")
+    else:
+        md.append("### Cracked Passwords\n```\nNo credentials cracked yet.\n```\n")
 
     markdown_output = "\n".join(md)
     filename = "report.md"
