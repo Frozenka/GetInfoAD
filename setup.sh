@@ -22,7 +22,16 @@ fi
 # Rendre le script exécutable
 chmod +x "$INSTALL_DIR/getinfoAD.py"
 
+
+# Vérifier si l'alias existe déjà
+if grep -q "alias getinfoAD=" /opt/my-resources/setup/zsh/aliases; then
+  echo "🔄 Alias 'getinfoAD' already exists, updating..."
+  sed -i '/alias getinfoAD=/d' /opt/my-resources/setup/zsh/aliases
+fi
+
+# Ajouter l'alias dans le fichier d'alias
+echo "alias getinfoAD='python3 /opt/getinfoad/getinfoAD.py'" >> /opt/my-resources/setup/zsh/aliases
+
 # Message de fin
 echo -e "\\n✅ GetInfoAD installed successfully."
-echo "➡️ Run manually with:"
-echo "   python3 $INSTALL_DIR/getinfoAD.py"
+echo "➡️ Run with: getinfoAD"
