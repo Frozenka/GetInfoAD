@@ -455,37 +455,6 @@ def ask_to_save(data, default_name):
     else:
         print(colored("📬 List not saved.", "yellow"))
 
-def get_users():
-    # Essayer d'abord avec LDAP
-    command = '''nxc ldap $IP -u $USER -p $PASSWORD --users'''
-    lines = run_command(command, use_network=False, use_dc=True)
-    users = []
-    
-    # Si LDAP ne retourne rien, utiliser SMB
-    if not lines:
-        command = '''nxc smb $IP -u $USER -p $PASSWORD --users'''
-        lines = run_command(command, use_network=False, use_dc=True)
-    
-    for line in lines:
-        # Ignorer les lignes d'en-tête et les comptes système
-        if (
-            not any(excl in line for excl in [
-                "-Username-", "krbtgt", "Guest", "DefaultAccount",
-                "WDAGUtilityAccount", "[+]", "[*]", "LDAP", "SMB",
-                "Windows", "Enumerated", "name:", "domain:", "signing:"
-            ])
-            and line.strip()
-            and not line.startswith("SMB")
-        ):
-            # Extraire le nom d'utilisateur
-            parts = line.split()
-            if len(parts) >= 1:
-                user = parts[0].strip()
-                if user and not user.startswith(("SMB", "[*]", "[+]")):
-                    users.append(user)
-    
-    return sorted(set(users))
-
 def get_machines(with_versions=False):
     command = '''nxc smb $IP -u $USER -p $PASSWORD'''
     lines = run_command(command, use_network=True, use_dc=False)
@@ -512,9 +481,13 @@ def get_machines(with_versions=False):
                     print(colored("="*50 + "\n", "red"))
             
             if with_versions:
+                # Extraction de l'OS depuis la ligne SMB
                 os_match = re.search(r'\[\*\] (.*?) \(name:', line)
-                os_info = os_match.group(1).strip() if os_match else "Unknown OS"
-                hosts[hostname] = os_info
+                if os_match:
+                    os_info = os_match.group(1).strip()
+                    hosts[hostname] = os_info
+                else:
+                    hosts[hostname] = "Unknown OS"
             else:
                 hosts[hostname] = None
     
@@ -578,18 +551,41 @@ def get_loggedon_users():
     command = '''nxc smb $IP -u $USER -p $PASSWORD --loggedon-users'''
     lines = run_command(command, use_network=True)
     sessions = defaultdict(lambda: {"ip": "", "users": []})
+    
     for line in lines:
+        # Amélioration de la détection des hôtes
         match_host = re.match(r'^SMB\s+(\S+)\s+\d+\s+(\S+)', line)
         if match_host:
             ip = match_host.group(1)
             host = match_host.group(2)
             sessions[host]["ip"] = ip
-        match_user = re.search(r'(\\\\|\s)([\w.-]+\\[\w.-]+)\s+logon_server', line)
-        if match_user:
-            user = match_user.group(2).strip()
-            host = line.split()[3]
-            if user not in sessions[host]["users"]:
-                sessions[host]["users"].append(user)
+            continue
+            
+        # Amélioration de la détection des utilisateurs
+        # Cherche les patterns comme "DOMAIN\user" ou "user@domain"
+        user_patterns = [
+            r'(\\\\|\s)([\w.-]+\\[\w.-]+)\s+logon_server',  # DOMAIN\user
+            r'([\w.-]+@[\w.-]+)\s+logon_server',  # user@domain
+            r'\[\*\] User:\s+([\w.-]+\\[\w.-]+)',  # [*] User: DOMAIN\user
+            r'\[\*\] User:\s+([\w.-]+@[\w.-]+)'  # [*] User: user@domain
+        ]
+        
+        for pattern in user_patterns:
+            match_user = re.search(pattern, line)
+            if match_user:
+                user = match_user.group(1) if "\\" in match_user.group(1) else match_user.group(2)
+                # Extraire le nom d'hôte de la ligne
+                host_match = re.search(r'SMB\s+\S+\s+\d+\s+(\S+)', line)
+                if host_match:
+                    host = host_match.group(1)
+                if user not in sessions[host]["users"]:
+                    sessions[host]["users"].append(user)
+                    break
+    
+    # Si aucune session n'est trouvée, ajouter un message d'erreur
+    if not sessions:
+        print(colored("⚠️ No logged-on users found or access denied", "yellow"))
+    
     return dict(sessions)
 
 def get_interfaces():
@@ -1109,7 +1105,7 @@ def get_adcs_info():
                                 esc_info = ESC_VULNERABILITIES[esc_num]
                                 vulns.append(f"📖 Documentation: {esc_info['link']}")
                                 vulns.append(f"💡 Exploitation: {esc_info['description']}")
-        
+            
         if vulns:
             # Process detected vulnerabilities for potential exploitation
             process_esc_vulnerabilities(vulns)
@@ -1167,7 +1163,7 @@ def full_report():
         ask_crack_hashes()
     
     if kerberost:
-        print(colored("\n🔄 Launching Kerberos hash cracking...", "cyan"))
+        print(colored("\n🚀 Launching Kerberos hash cracking...", "cyan"))
         ask_crack_kerberos_hashes()
 
     md = []
@@ -1346,14 +1342,14 @@ def update_hosts_file():
     
     if not dc_ip or not domain:
         return
-    
+
     hosts_entry = f"{dc_ip} {domain}"
-    
+
     try:
         with open('/etc/hosts', 'r') as f:
             if any(line.strip() == hosts_entry for line in f):
                 return
-        
+
         command = f'echo "{hosts_entry}" | sudo tee -a /etc/hosts > /dev/null'
         subprocess.run(command, shell=True, check=True)
         print(colored(f"✅ Added : {hosts_entry} to /etc/hosts", "green"))
@@ -1362,6 +1358,23 @@ def update_hosts_file():
         print(colored("❌ Failed to update /etc/hosts (permission denied)", "red"))
     except Exception as e:
         print(colored(f"❌ Error updating /etc/hosts: {str(e)}", "red"))
+
+def get_users():
+    command = '''nxc ldap $IP -u $USER -p $PASSWORD --users'''
+    lines = run_command(command, use_network=False, use_dc=True)
+    users = []
+    for line in lines:
+        if (
+            line.startswith("LDAP")
+            and not any(excl in line for excl in [
+                "-Username-", "krbtgt", "Guest", "DefaultAccount",
+                "WDAGUtilityAccount", "[+]", "[*]"
+            ])
+        ):
+            parts = line.split()
+            if len(parts) >= 5:
+                users.append(parts[4])
+    return sorted(set(users))
 
 def main():
     parser = argparse.ArgumentParser(description="Active Directory enumeration via SMB")
@@ -1409,13 +1422,13 @@ def main():
         ask_to_save(results, "users.txt")
 
     elif args.kerberstable:
-         results = get_kerberost()  # No need for specific user
-         if results:
+        results = get_kerberost()  # No need for specific user
+        if results:
             print("\n".join(results))
             ask_crack_kerberos_hashes()
-         else:
-           print(colored("No Kerberos roastable account found.", "yellow"))
-           ask_to_save(results if results else ["No Kerberos roastable account found."], "kerberost.txt")
+        else:
+            print(colored("No Kerberos roastable account found.", "yellow"))
+            ask_to_save(results if results else ["No Kerberos roastable account found."], "kerberost.txt")
 
     elif args.asreprostable:
         users = get_users()
