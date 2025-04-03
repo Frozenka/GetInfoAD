@@ -41,22 +41,9 @@ Other options:
 curl -sSL https://raw.githubusercontent.com/Frozenka/GetInfoAD/main/setup.sh | sudo bash
 ```
 
-This script will:
-- Clone the tool to `/opt/getinfoad`
-- Make it executable
-- Add an alias `getinfoAD='python3 /opt/getinfoad/getinfoAD.py '
-
 After installation:
 ```bash
 getinfoAD
-```
-
-### Manual Installation
-```bash
-git clone https://github.com/Frozenka/GetInfoAD.git /opt/getinfoad
-chmod +x /opt/getinfoad/getinfoAD.py
-echo "alias getinfoAD='python3 /opt/getinfoad/getinfoAD.py '"
-source ~/.bashrc
 ```
 
 Example with Exegol:
