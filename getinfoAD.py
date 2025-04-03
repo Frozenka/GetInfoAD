@@ -6,8 +6,73 @@ import re
 import shutil
 import site
 from collections import defaultdict
+import requests
+import hashlib
+from pathlib import Path
 
 DEBUG = False
+
+def get_current_version():
+    """Get hash of current script content"""
+    try:
+        with open(__file__, 'rb') as f:
+            return hashlib.sha256(f.read()).hexdigest()
+    except Exception:
+        return None
+
+def get_remote_version():
+    """Get latest version from GitHub"""
+    try:
+        response = requests.get('https://raw.githubusercontent.com/Frozenka/GetInfoAD/main/getinfoAD.py')
+        if response.status_code == 200:
+            return hashlib.sha256(response.content).hexdigest()
+        return None
+    except Exception:
+        return None
+
+def update_available():
+    """Check if an update is available"""
+    current = get_current_version()
+    remote = get_remote_version()
+    return current != remote if current and remote else False
+
+def perform_update():
+    """Update the script from GitHub"""
+    try:
+        response = requests.get('https://raw.githubusercontent.com/Frozenka/GetInfoAD/main/getinfoAD.py')
+        if response.status_code == 200:
+            backup_path = f"{__file__}.backup"
+            # Create backup of current version
+            shutil.copy2(__file__, backup_path)
+            
+            try:
+                # Write new version
+                with open(__file__, 'wb') as f:
+                    f.write(response.content)
+                print(colored("✅ Update successful!", "green"))
+                print(colored("🔄 Restarting script...", "cyan"))
+                os.execv(sys.executable, ['python3'] + sys.argv)
+            except Exception as e:
+                # Restore backup if update fails
+                shutil.copy2(backup_path, __file__)
+                print(colored(f"❌ Update failed, restored backup: {e}", "red"))
+                os.remove(backup_path)
+                return False
+            
+            # Remove backup if update successful
+            os.remove(backup_path)
+            return True
+    except Exception as e:
+        print(colored(f"❌ Update failed: {e}", "red"))
+        return False
+
+def check_for_updates():
+    """Check for updates and prompt user"""
+    if update_available():
+        print(colored("\n🔄 An update is available for GetInfoAD!", "yellow"))
+        choice = input(colored("Would you like to update now? [Y/n] > ", "cyan")).strip().lower()
+        if choice == '' or choice == 'y':
+            perform_update()
 
 def install_termcolor_if_missing():
     try:
@@ -25,8 +90,17 @@ def install_pyfiglet_if_missing():
         subprocess.run([sys.executable, "-m", "pip", "install", "pyfiglet"], check=True)
         site.main()  # reload paths
 
+def install_requests_if_missing():
+    try:
+        import requests
+    except ImportError:
+        print("[requests]: Module missing. Installing...")
+        subprocess.run([sys.executable, "-m", "pip", "install", "requests"], check=True)
+        site.main()  # reload paths
+
 install_termcolor_if_missing()
 install_pyfiglet_if_missing()
+install_requests_if_missing()
 
 from termcolor import colored
 import pyfiglet
@@ -84,8 +158,8 @@ def show_banner():
     title = "Active Directory Enumeration"
     print(colored("║", "cyan") + colored(f"{title:^62}", "blue", attrs=["bold"]) + colored("║", "cyan"))
     print(colored("╠══════════════════════════════════════════════════════════════╣", "cyan"))
-    powered_by = "  [*] Powered by NXC"
-    print(colored("║", "cyan") + colored("  [*] ", "yellow") + colored("Powered by", "white") + colored(" NXC", "green", attrs=["bold"]) + " " * (62 - len(powered_by)) + colored("║", "cyan"))
+    powered_by = "  [*] Powered by Exegol"
+    print(colored("║", "cyan") + colored("  [*] ", "yellow") + colored("Powered by", "white") + colored(" Exegol", "green", attrs=["bold"]) + " " * (62 - len(powered_by)) + colored("║", "cyan"))
     created_by = "  [*] Created by frozenk"
     print(colored("║", "cyan") + colored("  [*] ", "yellow") + colored("Created by", "white") + colored(" frozenk", "blue", attrs=["bold"]) + " " * (62 - len(created_by)) + colored("║", "cyan"))
     print(colored("╚══════════════════════════════════════════════════════════════╝", "cyan"))
@@ -146,59 +220,48 @@ def run_command(command, use_network=False, use_dc=False):
         if use_dc and os.getenv("DC_IP"):
             dc_ip = os.getenv("DC_IP")
             current_command = command.replace("$IP", dc_ip)
-            
             if DEBUG:
                 print(colored(f"🔍 Command (DC): {current_command}", "yellow"))
-            
             result = subprocess.run(current_command, shell=True, executable="/bin/bash", check=True, capture_output=True, text=True)
-            
             if DEBUG:
                 print(colored("📤 Output:", "yellow"))
                 print(result.stdout)
                 if result.stderr:
                     print(colored("📤 Error:", "red"))
                     print(result.stderr)
-            
             return result.stdout.strip().splitlines()
         
         elif use_network and is_network:
             base_ip = os.getenv("IP")
             network_ips = generate_network_ips(base_ip)
-            
             all_results = []
             for ip in network_ips:
                 current_command = command.replace("$IP", ip)
                 print(colored(f"▶️  Running on {ip}...", "cyan"))
-                
                 if DEBUG:
                     print(colored(f"🔍 Command: {current_command}", "yellow"))
-                
                 result = subprocess.run(current_command, shell=True, executable="/bin/bash", check=True, capture_output=True, text=True)
-                
                 if DEBUG:
                     print(colored("📤 Output:", "yellow"))
                     print(result.stdout)
                     if result.stderr:
                         print(colored("📤 Error:", "red"))
                         print(result.stderr)
-                
                 all_results.extend(result.stdout.strip().splitlines())
-            
             return all_results
+        
         else:
             if DEBUG:
                 print(colored(f"🔍 Command: {command}", "yellow"))
-            
             result = subprocess.run(command, shell=True, executable="/bin/bash", check=True, capture_output=True, text=True)
-            
             if DEBUG:
                 print(colored("📤 Output:", "yellow"))
                 print(result.stdout)
                 if result.stderr:
                     print(colored("📤 Error:", "red"))
                     print(result.stderr)
-            
             return result.stdout.strip().splitlines()
+    
     except subprocess.CalledProcessError as e:
         print(colored(f"❌ Command failed: {command}", "red"))
         print(colored(e.stderr.strip(), "red"))
@@ -324,11 +387,17 @@ def get_domain_name():
         match_dc = re.search(r'SMB\s+(\d+\.\d+\.\d+\.\d+)\s+\d+\s+(DC\d*|DC)', line)
         if match_dc and not dc_ip:
             dc_ip = match_dc.group(1)
+            os.environ["DC_IP"] = dc_ip
+            if DEBUG:
+                print(colored(f"🔍 DC detected at IP address: {dc_ip}", "green"))
     
     if dc_ip:
         os.environ["DC_IP"] = dc_ip
+    else:
+        # Si on n'a pas trouvé le DC, on utilise l'IP fournie
+        os.environ["DC_IP"] = os.getenv("IP")
         if DEBUG:
-            print(colored(f"🔍 DC detected at IP address: {dc_ip}", "green"))
+            print(colored(f"⚠️  No DC found, using provided IP: {os.getenv('IP')}", "yellow"))
     
     return domain
 
@@ -347,7 +416,7 @@ def get_asreproast(users):
     run_command(command, use_network=False, use_dc=True)
 
     if not os.path.exists(output_file) or os.path.getsize(output_file) == 0:
-        print(colored("❌ AS-REP output file not found or empty.", "red"))
+        print(colored("❌ AS-REP empty.", "red"))
         return []
 
     try:
@@ -368,7 +437,7 @@ def get_kerberost():
     run_command(command, use_network=False, use_dc=True)
 
     if not os.path.exists(output_file) or os.path.getsize(output_file) == 0:
-        print(colored("❌ Kerberos Roasting output file not found or empty.", "red"))
+        print(colored("❌ Kerberos Roasting empty.", "red"))
         return []
 
     try:
@@ -514,6 +583,135 @@ def ask_crack_hashes():
     except Exception as e:
         print(colored("❌ Unexpected error during hashcat execution:", "red"), e)
 
+def get_adcs_info():
+    """Enumerate ADCS certificates using Certipy"""
+    username = os.getenv("USER")
+    password = os.getenv("PASSWORD")
+    dc_ip = os.getenv("DC_IP")
+    
+    if not dc_ip:
+        print(colored("❌ DC IP not found. Running domain discovery first...", "yellow"))
+        get_domain_name()
+        dc_ip = os.getenv("DC_IP")
+    
+    if not dc_ip:
+        print(colored("❌ Could not determine DC IP address", "red"))
+        return []
+    
+    output_file = "certipy_results.txt"
+    command = f'certipy find -vulnerable -u {username} -p "{password}" -dc-ip {dc_ip} -stdout 2>/dev/null | grep -v "Certipy v" > {output_file}'
+    
+    try:
+        subprocess.run(command, shell=True, check=True)
+        vulns = []
+        
+        if os.path.exists(output_file):
+            with open(output_file, 'r') as f:
+                lines = f.readlines()
+            
+            current_section = None
+            current_template = None
+            seen_users = set()
+            
+            for line in lines:
+                line = line.strip()
+                if not line or line.startswith("[*]"):
+                    continue
+                
+                if line == "Certificate Authorities":
+                    current_section = "CA"
+                    vulns.append("\n[Certificate Authorities]")
+                    continue
+                elif line == "Certificate Templates":
+                    current_section = "Templates"
+                    vulns.append("\n[Certificate Templates]")
+                    continue
+                
+                if current_section == "CA":
+                    if "CA Name" in line:
+                        vulns.append(f"\n  CA: {line.split(': ')[1]}")
+                    elif "DNS Name" in line:
+                        vulns.append(f"  DNS: {line.split(': ')[1]}")
+                    elif "Certificate Subject" in line:
+                        vulns.append(f"  Subject: {line.split(': ')[1]}")
+                    elif "Web Enrollment" in line:
+                        vulns.append(f"  Web Enrollment: {line.split(': ')[1]}")
+                    elif "User Specified SAN" in line:
+                        vulns.append(f"  User Specified SAN: {line.split(': ')[1]}")
+                    elif "Permissions" in line:
+                        vulns.append("\n  [Permissions]")
+                    elif "Access Rights" in line:
+                        vulns.append("    Access Rights:")
+                        seen_users.clear()
+                    elif line.startswith("LAB.LOCAL\\"):
+                        if line not in seen_users:
+                            vulns.append(f"      • {line}")
+                            seen_users.add(line)
+                    elif line.startswith("[!] Vulnerabilities"):
+                        vulns.append("\n  [Vulnerabilities]")
+                    elif any(esc in line for esc in ["ESC1", "ESC2", "ESC3", "ESC4", "ESC5", "ESC6", "ESC7", "ESC8", "ESC9", "ESC10", "ESC11"]):
+                        if ": " in line:
+                            esc_num, desc = line.split(": ", 1)
+                            esc_num = esc_num.strip()
+                            desc = desc.strip()
+                            vulns.append(f"    {esc_num:<8} : {desc}")
+                
+                elif current_section == "Templates":
+                    if "Template Name" in line:
+                        current_template = line.split(": ")[1]
+                        vulns.append(f"\n  Template: {current_template}")
+                        seen_users.clear()
+                    elif "Display Name" in line:
+                        vulns.append(f"    Name: {line.split(': ')[1]}")
+                    elif "Enabled" in line and ": True" in line:
+                        vulns.append("    Status: Enabled")
+                    elif "Client Authentication" in line:
+                        vulns.append(f"    Client Auth: {line.split(': ')[1]}")
+                    elif "Enrollment Flag" in line and ":" in line:
+                        flags = line.split(":", 1)[1].strip()
+                        if flags:
+                            vulns.append("\n    [Enrollment Flags]")
+                            for flag in flags.split():
+                                vulns.append(f"      • {flag}")
+                    elif "Private Key Flag" in line and ":" in line:
+                        flags = line.split(":", 1)[1].strip()
+                        if flags:
+                            vulns.append("\n    [Private Key Flags]")
+                            for flag in flags.split():
+                                vulns.append(f"      • {flag}")
+                    elif "Extended Key Usage" in line and ":" in line:
+                        usage = line.split(":", 1)[1].strip()
+                        if usage:
+                            vulns.append("\n    [Extended Key Usage]")
+                            for use in usage.split(","):
+                                vulns.append(f"      • {use.strip()}")
+                    elif "Enrollment Rights" in line:
+                        vulns.append("\n    [Enrollment Rights]")
+                        seen_users.clear()
+                    elif line.startswith("LAB.LOCAL\\"):
+                        if line not in seen_users:
+                            vulns.append(f"      • {line}")
+                            seen_users.add(line)
+                    elif line.startswith("[!] Vulnerabilities"):
+                        vulns.append("\n    [Vulnerabilities]")
+                    elif any(esc in line for esc in ["ESC1", "ESC2", "ESC3", "ESC4", "ESC5", "ESC6", "ESC7", "ESC8", "ESC9", "ESC10", "ESC11"]):
+                        if ": " in line:
+                            esc_num, desc = line.split(": ", 1)
+                            esc_num = esc_num.strip()
+                            desc = desc.strip()
+                            vulns.append(f"      {esc_num:<8} : {desc}")
+        
+        if not vulns:
+            vulns.append("No ADCS vulnerabilities found.")
+        
+        return vulns
+    except subprocess.CalledProcessError as e:
+        print(colored(f"❌ Error running Certipy: {e}", "red"))
+        return ["Error running Certipy scan"]
+    except Exception as e:
+        print(colored(f"❌ Error: {e}", "red"))
+        return ["Error during ADCS enumeration"]
+
 def full_report():
     domain = get_domain_name()
 
@@ -536,6 +734,10 @@ def full_report():
     
     print(colored("▶️  Retrieving password policy (Targeted DC)...", "cyan"))
     passpol = get_passpol()
+    
+    print(colored("▶️  Enumerating ADCS certificates...", "cyan"))
+    adcs_vulns = get_adcs_info()
+    
     print(colored("--- End Collecting ---\n", "yellow", attrs=["bold"]))
     
     print(colored("--- Roasting ---", "yellow", attrs=["bold"]))
@@ -607,6 +809,17 @@ def full_report():
         md.extend(passpol)
         md.append("```\n")
 
+    # Add ADCS section before AS-REP Roasting
+    md.append("## 🔏 ADCS Enumeration\n```")
+    if adcs_vulns:
+        for line in adcs_vulns:
+            # Remove color codes for markdown output
+            clean_line = re.sub(r'\x1b\[[0-9;]*m', '', line)
+            md.append(clean_line)
+    else:
+        md.append("No ADCS information available")
+    md.append("```\n")
+
     md.append("## 🔥 AS-REP Roasting\n```")
     if asreproast:
         md.extend(asreproast)
@@ -666,11 +879,15 @@ def main():
     group.add_argument("-a", "--asreprostable", action="store_true", help="Perform AS-REP roasting only")
     
     parser.add_argument("-d", "--debug", action="store_true", help="Enable debug mode to show all commands and outputs")
+    parser.add_argument("--no-update-check", action="store_true", help="Skip update check")
 
     args = parser.parse_args()
 
     global DEBUG
     DEBUG = args.debug
+
+    if not args.no_update_check:
+        check_for_updates()
 
     banner()
     env = check_env_vars()
