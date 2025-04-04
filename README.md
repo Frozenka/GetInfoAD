@@ -1,5 +1,5 @@
 # GetInfoAD
-**GetInfoAD** is a fast and flexible Active Directory enumeration tool built around [NXC](https://github.com/microfrosty/nxc). It was designed primarily for use with [Exegol](https://github.com/ShutdownRepo/Exegol) and integrates seamlessly with its credential and environment variable management.
+**GetInfoAD** is a fast and flexible Active Directory enumeration tool. It was designed primarily for use with [Exegol](https://github.com/ShutdownRepo/Exegol) and integrates seamlessly with its credential and environment variable management.
 
 ![image](https://github.com/user-attachments/assets/502c9873-c7ae-47be-8430-5a5af9dfc3c9)
 
